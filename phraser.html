@@ -8,9 +8,9 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260615-4">
-  <script defer src="exceljs.min.js?v=20260615-4"></script>
-  <script defer src="phraser.js?v=20260615-4"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260616-2">
+  <script defer src="exceljs.min.js?v=20260616-2"></script>
+  <script defer src="phraser.js?v=20260616-2"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -86,6 +86,44 @@
           Als Excel speichern
         </button>
       </div>
+
+      <section
+        id="resultSelection"
+        class="result-selection"
+        aria-labelledby="resultSelectionTitle"
+        hidden
+      >
+        <div class="selection-heading">
+          <div>
+            <h2 id="resultSelectionTitle">Ergebnislisten auswählen</h2>
+            <p class="field-hint">
+              Vorlauf, Zwischenläufe und Finale werden getrennt geladen.
+            </p>
+          </div>
+          <p id="selectionInfo" class="selection-info" aria-live="polite"></p>
+        </div>
+
+        <div id="resultTabs" class="result-tabs" role="tablist">
+          <button
+            class="result-tab"
+            type="button"
+            role="tab"
+            data-event-type="Individual"
+          >
+            Einzel
+          </button>
+          <button
+            class="result-tab"
+            type="button"
+            role="tab"
+            data-event-type="Team"
+          >
+            Mannschaft
+          </button>
+        </div>
+
+        <div id="resultCatalog" class="result-catalog"></div>
+      </section>
 
       <div id="status" class="status" role="status" aria-live="polite">Bereit.</div>
 

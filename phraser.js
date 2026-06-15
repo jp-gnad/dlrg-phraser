@@ -1,10 +1,13 @@
 "use strict";
 
 const WORKER_URL = "https://dlrg-results.jp-gnad.workers.dev/";
-const MAX_CONCURRENT_REQUESTS = 4;
 const AUTH_SESSION_KEY = "dlrg-phraser-auth-year";
 
 let currentResults = [];
+let currentCatalog = null;
+let activeEventType = "";
+let activeChoiceId = "";
+let catalogChoiceEvents = new Map();
 let competitionListLoaded = false;
 
 const loginScreen = document.getElementById("loginScreen");
@@ -23,6 +26,10 @@ const manualCompetitionGroup = document.getElementById(
 );
 const competitionInput = document.getElementById("competition");
 const excelButton = document.getElementById("excelButton");
+const resultSelection = document.getElementById("resultSelection");
+const selectionInfo = document.getElementById("selectionInfo");
+const resultTabs = document.getElementById("resultTabs");
+const resultCatalog = document.getElementById("resultCatalog");
 const statusElement = document.getElementById("status");
 const resultTable = document.getElementById("resultTable");
 const pageTitle = document.getElementById("pageTitle");
@@ -86,20 +93,10 @@ function buildWorkerUrl(competition, options = {}) {
   return url.toString();
 }
 
-async function fetchText(url) {
-  const response = await fetch(url);
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${text.slice(0, 500)}`);
-  }
-
-  return text;
-}
-
-async function fetchJson(url) {
+async function fetchJson(url, options = {}) {
   const response = await fetch(url, {
-    cache: "no-store"
+    cache: "no-store",
+    ...options
   });
   const text = await response.text();
 
@@ -110,7 +107,7 @@ async function fetchJson(url) {
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error("Die Wettkampfliste enthält kein gültiges JSON.");
+    throw new Error("Die Serverantwort enthält kein gültiges JSON.");
   }
 }
 
@@ -229,28 +226,291 @@ function getSelectedCompetitionCode() {
     : competitionSelect.value;
 }
 
+function resetResultSelection() {
+  currentCatalog = null;
+  currentResults = [];
+  activeEventType = "";
+  activeChoiceId = "";
+  catalogChoiceEvents = new Map();
+  resultSelection.hidden = true;
+  resultCatalog.replaceChildren();
+  resultTable.replaceChildren();
+  excelButton.disabled = true;
+  selectionInfo.textContent = "";
+  errorDetails.hidden = true;
+  errorOutput.textContent = "";
+
+  resultTabs.querySelectorAll(".result-tab").forEach((tab) => {
+    tab.hidden = false;
+    tab.setAttribute("aria-selected", "false");
+  });
+}
+
+function getGenderLabel(value) {
+  if (value === "w") {
+    return "weiblich";
+  }
+
+  if (value === "m") {
+    return "männlich";
+  }
+
+  return "gemischt";
+}
+
+function getEventTypeLabel(value) {
+  return value === "Individual" ? "Einzel" : "Mannschaft";
+}
+
+function getRoundSortValue(value) {
+  if (value === "Vorlauf") {
+    return 0;
+  }
+
+  const intermediateMatch = String(value || "").match(
+    /^Zwischenlauf\s+(\d+)$/
+  );
+
+  if (intermediateMatch) {
+    return 100 + Number(intermediateMatch[1]);
+  }
+
+  if (value === "Ergebnis") {
+    return 9000;
+  }
+
+  if (value === "Finale") {
+    return 10000;
+  }
+
+  return 8000;
+}
+
+function groupEventsByRound(events) {
+  const groups = new Map();
+
+  events.forEach((event) => {
+    const round = event.round || "Ergebnis";
+
+    if (!groups.has(round)) {
+      groups.set(round, []);
+    }
+
+    groups.get(round).push(event);
+  });
+
+  return Array.from(groups.entries()).sort(([left], [right]) => {
+    const orderDifference =
+      getRoundSortValue(left) - getRoundSortValue(right);
+    return orderDifference || left.localeCompare(right, "de");
+  });
+}
+
+function setCatalogButtonsDisabled(disabled) {
+  resultCatalog.querySelectorAll(".result-choice-button").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function renderCatalogTable() {
+  resultCatalog.replaceChildren();
+  catalogChoiceEvents = new Map();
+
+  if (!currentCatalog || !activeEventType) {
+    return;
+  }
+
+  const events = currentCatalog.events.filter(
+    (event) => event.eventType === activeEventType
+  );
+  const genderOrder = ["w", "m", "mixed"];
+  const ageGroups = new Map();
+
+  events.forEach((event) => {
+    if (!ageGroups.has(event.ageGroup)) {
+      ageGroups.set(event.ageGroup, new Map());
+    }
+
+    const disciplines = ageGroups.get(event.ageGroup);
+
+    if (!disciplines.has(event.discipline)) {
+      disciplines.set(event.discipline, new Map());
+    }
+
+    const genders = disciplines.get(event.discipline);
+
+    if (!genders.has(event.gender)) {
+      genders.set(event.gender, []);
+    }
+
+    genders.get(event.gender).push(event);
+  });
+
+  const sortedAgeGroups = Array.from(ageGroups.entries()).sort(
+    ([left], [right]) => left.localeCompare(right, "de")
+  );
+
+  sortedAgeGroups.forEach(([ageGroup, disciplines]) => {
+    const section = document.createElement("section");
+    section.className = "age-group-section";
+    const title = document.createElement("h3");
+    title.className = "age-group-title";
+    title.textContent = ageGroup;
+    section.appendChild(title);
+
+    Array.from(disciplines.entries())
+      .sort(([left], [right]) => left.localeCompare(right, "de"))
+      .forEach(([discipline, genders]) => {
+        const row = document.createElement("div");
+        row.className = "discipline-row";
+        const name = document.createElement("div");
+        name.className = "discipline-name";
+        name.textContent = discipline;
+        row.appendChild(name);
+        const buttonRow = document.createElement("div");
+        buttonRow.className = "round-button-row";
+
+        genderOrder.forEach((gender) => {
+          const choiceEvents = genders.get(gender) || [];
+
+          if (choiceEvents.length > 0) {
+            groupEventsByRound(choiceEvents).forEach(
+              ([round, roundEvents]) => {
+                const choiceId =
+                  `${activeEventType}:${ageGroup}:${discipline}:` +
+                  `${gender}:${round}`;
+                const button = document.createElement("button");
+                const label = document.createElement("span");
+                const roundLabel = document.createElement("small");
+                button.className = "result-choice-button";
+                button.type = "button";
+                button.dataset.choiceId = choiceId;
+                button.setAttribute(
+                  "aria-label",
+                  `${discipline}, ${ageGroup}, ${getGenderLabel(gender)}, ${round}`
+                );
+                label.textContent = getGenderLabel(gender);
+                roundLabel.textContent = round;
+                button.append(label, roundLabel);
+
+                if (choiceId === activeChoiceId) {
+                  button.classList.add("is-selected");
+                }
+
+                catalogChoiceEvents.set(choiceId, roundEvents);
+                buttonRow.appendChild(button);
+              }
+            );
+          }
+        });
+
+        row.appendChild(buttonRow);
+        section.appendChild(row);
+      });
+
+    resultCatalog.appendChild(section);
+  });
+
+  selectionInfo.textContent =
+    `${events.length} ${getEventTypeLabel(activeEventType)}-Ergebnislisten`;
+}
+
+function setActiveEventType(eventType) {
+  if (!currentCatalog) {
+    return;
+  }
+
+  const eventTypeChanged =
+    Boolean(activeEventType) && activeEventType !== eventType;
+  activeEventType = eventType;
+  activeChoiceId = "";
+
+  if (eventTypeChanged) {
+    currentResults = [];
+    resultTable.replaceChildren();
+    excelButton.disabled = true;
+    errorDetails.hidden = true;
+    errorOutput.textContent = "";
+  }
+
+  resultTabs.querySelectorAll(".result-tab").forEach((tab) => {
+    const isActive = tab.dataset.eventType === eventType;
+    tab.setAttribute("aria-selected", String(isActive));
+    tab.tabIndex = isActive ? 0 : -1;
+  });
+
+  renderCatalogTable();
+}
+
+function renderResultCatalog(catalog) {
+  const eventTypes = ["Individual", "Team"].filter((eventType) =>
+    catalog.events.some((event) => event.eventType === eventType)
+  );
+
+  resultTabs.querySelectorAll(".result-tab").forEach((tab) => {
+    tab.hidden = !eventTypes.includes(tab.dataset.eventType);
+  });
+
+  resultSelection.hidden = false;
+  setActiveEventType(eventTypes[0]);
+}
+
+async function loadResultCatalog() {
+  const competitionCode = getSelectedCompetitionCode();
+
+  if (!competitionCode) {
+    resetResultSelection();
+    statusElement.className = "status error";
+    statusElement.textContent = "Bitte einen Wettkampfcode eingeben.";
+    return;
+  }
+
+  resetResultSelection();
+  competitionSelect.disabled = true;
+  competitionInput.disabled = true;
+  statusElement.className = "status";
+  statusElement.textContent =
+    "Ergebnisübersicht und Zuordnungen werden geladen ...";
+
+  try {
+    const catalog = await fetchJson(
+      buildWorkerUrl(competitionCode, { mode: "catalog" })
+    );
+
+    if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
+      throw new Error("Für diesen Wettkampf wurden keine Ergebnislisten gefunden.");
+    }
+
+    currentCatalog = catalog;
+    pageTitle.textContent = catalog.competitionName || competitionCode;
+    renderResultCatalog(catalog);
+
+    const sourceText =
+      catalog.source === "live"
+        ? "inklusive offizieller Vorläufe und Finals"
+        : "aus der competition.net-Übersicht";
+    statusElement.textContent =
+      `${catalog.events.length} Ergebnislisten ${sourceText} zugeordnet. ` +
+      "Wähle bei der gewünschten Disziplin Geschlecht und Runde.";
+
+    if (catalog.warning) {
+      statusElement.textContent += ` Hinweis: ${catalog.warning}`;
+    }
+  } catch (error) {
+    console.error(error);
+    resetResultSelection();
+    statusElement.className = "status error";
+    statusElement.textContent = `Fehler: ${error.message}`;
+  } finally {
+    competitionSelect.disabled = false;
+    competitionInput.disabled = false;
+  }
+}
+
 function decodeHtmlEntities(value) {
   const textarea = document.createElement("textarea");
   textarea.innerHTML = value;
   return textarea.value;
-}
-
-function stripHtml(value) {
-  return decodeHtmlEntities(
-    String(value || "")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  );
-}
-
-function extractTagText(html, tagName) {
-  const expression = new RegExp(
-    `<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`,
-    "i"
-  );
-  const match = html.match(expression);
-  return match ? stripHtml(match[1]) : "";
 }
 
 function extractVisibleText(html) {
@@ -274,54 +534,6 @@ function extractVisibleText(html) {
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
-}
-
-function cleanCompetitionName(value, fallback) {
-  let name = String(value || "")
-    .replace(/\s*[-|]\s*(Ergebnisse|Results)\s*$/i, "")
-    .trim();
-
-  if (!name || /^(Ergebnisse|Results)$/i.test(name) || name.length > 180) {
-    name = fallback;
-  }
-
-  return name;
-}
-
-function extractOverview(html, competitionCode) {
-  const uuidSet = new Set();
-  const uuidPattern =
-    /\/results\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
-  let match;
-
-  while ((match = uuidPattern.exec(html)) !== null) {
-    uuidSet.add(match[1].toLowerCase());
-  }
-
-  let competitionName = extractTagText(html, "h1");
-
-  if (!competitionName || /^(Ergebnisse|Results)$/i.test(competitionName)) {
-    competitionName = extractTagText(html, "title");
-  }
-
-  return {
-    competitionName: cleanCompetitionName(competitionName, competitionCode),
-    uuids: Array.from(uuidSet)
-  };
-}
-
-function extractCompetitionEndDate(html) {
-  const visibleText = extractVisibleText(html).join(" ");
-  const dateRangeMatch = visibleText.match(
-    /\b(\d{1,2}\.\d{1,2}\.\d{4})\s*[-–—]\s*(\d{1,2}\.\d{1,2}\.\d{4})\b/
-  );
-
-  if (dateRangeMatch) {
-    return dateRangeMatch[2];
-  }
-
-  const singleDateMatch = visibleText.match(/\b(\d{1,2}\.\d{1,2}\.\d{4})\b/);
-  return singleDateMatch ? singleDateMatch[1] : "";
 }
 
 function parseTitle(title) {
@@ -601,27 +813,6 @@ function parseResultPage(html, context) {
   return results;
 }
 
-async function mapWithConcurrency(items, concurrency, task) {
-  const output = new Array(items.length);
-  let nextIndex = 0;
-
-  async function runner() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      output[currentIndex] = await task(items[currentIndex], currentIndex);
-    }
-  }
-
-  const runners = Array.from(
-    { length: Math.min(concurrency, items.length) },
-    () => runner()
-  );
-
-  await Promise.all(runners);
-  return output;
-}
-
 function createCell(row, value, type, className = "") {
   const cell = document.createElement(type);
   const text = value === undefined || value === null ? "" : String(value);
@@ -858,17 +1049,96 @@ async function exportToExcel() {
   }
 }
 
-async function loadAllResults() {
+function getDisciplineLabel(event) {
+  if (event.round && event.round !== "Ergebnis") {
+    return `${event.discipline} - ${event.round}`;
+  }
+
+  return event.discipline;
+}
+
+function getCatalogCompetitionDate() {
+  if (!currentCatalog) {
+    return "";
+  }
+
+  return formatIsoDate(currentCatalog.till || currentCatalog.from);
+}
+
+function normalizeLiveResultRows(data, event, context) {
+  const rows = Array.isArray(data && data.daten) ? data.daten : [];
+
+  return rows.map((row, index) => {
+    const rawTime = String(row["zeit 1"] || "").trim();
+    const penalty = String(row["strafe 1"] || "").trim();
+    const hasTime = looksLikeTime(rawTime);
+    const statusParts = [];
+
+    if (penalty) {
+      statusParts.push(penalty);
+    }
+
+    if (rawTime && !hasTime) {
+      statusParts.push(rawTime);
+    }
+
+    return {
+      place: row.platz === undefined || row.platz === null
+        ? index + 1
+        : row.platz,
+      competitionCode: context.competitionCode,
+      competitionName: context.competitionName,
+      competitionDate: context.competitionDate,
+      ageGroup: event.ageGroup,
+      gender: event.gender,
+      discipline: getDisciplineLabel(event),
+      name: String(row.name || "")
+        .replace(/\s+\(\d{2,4}\)\s*$/, "")
+        .trim(),
+      club: String(row.gliederung || "").trim(),
+      time: hasTime ? rawTime : "",
+      status: statusParts.join(" / ")
+    };
+  });
+}
+
+function createSelectionRequestItem(event) {
+  if (event.source === "competition") {
+    return {
+      key: event.key,
+      source: event.source,
+      uuid: event.uuid
+    };
+  }
+
+  return {
+    key: event.key,
+    source: event.source,
+    edvnummer: event.edvnummer,
+    wkid: event.wkid,
+    ak: event.ak
+  };
+}
+
+async function loadSelectedResults(selectedEvents, choiceId) {
   const competitionCode = getSelectedCompetitionCode();
 
-  if (!competitionCode) {
+  if (!currentCatalog || selectedEvents.length === 0) {
     statusElement.className = "status error";
-    statusElement.textContent = "Bitte einen Wettkampfcode eingeben.";
+    statusElement.textContent = "Für diese Auswahl sind keine Ergebnisse vorhanden.";
     return;
   }
 
+  activeChoiceId = choiceId;
+  resultCatalog.querySelectorAll(".result-choice-button").forEach((button) => {
+    button.classList.toggle(
+      "is-selected",
+      button.dataset.choiceId === activeChoiceId
+    );
+  });
   competitionSelect.disabled = true;
   competitionInput.disabled = true;
+  setCatalogButtonsDisabled(true);
   excelButton.disabled = true;
   currentResults = [];
   resultTable.replaceChildren();
@@ -876,61 +1146,74 @@ async function loadAllResults() {
   errorOutput.textContent = "";
   statusElement.className = "status";
   statusElement.textContent =
-    "Wettkampf- und Ergebnisübersicht werden geladen ...";
+    `${selectedEvents.length} ausgewählte Ergebnislisten werden geladen ...`;
 
   try {
-    const [overviewHtml, competitionInfoHtml] = await Promise.all([
-      fetchText(buildWorkerUrl(competitionCode)),
-      fetchText(buildWorkerUrl(competitionCode, { mode: "competition" }))
-    ]);
-    const overview = extractOverview(overviewHtml, competitionCode);
-    const competitionDate = extractCompetitionEndDate(competitionInfoHtml);
-
-    if (overview.uuids.length === 0) {
-      throw new Error("Auf der Übersichtsseite wurden keine UUIDs gefunden.");
-    }
-
-    pageTitle.textContent = overview.competitionName;
-    let completed = 0;
-    const errors = [];
-    statusElement.textContent =
-      `${overview.uuids.length} Ergebnislisten gefunden. Daten werden geladen ...`;
-
-    const resultGroups = await mapWithConcurrency(
-      overview.uuids,
-      MAX_CONCURRENT_REQUESTS,
-      async (uuid) => {
-        try {
-          const html = await fetchText(
-            buildWorkerUrl(competitionCode, { uuid })
-          );
-
-          return parseResultPage(html, {
-            competitionCode,
-            competitionName: overview.competitionName,
-            competitionDate
-          });
-        } catch (error) {
-          errors.push(`${uuid}: ${error.message}`);
-          return [];
-        } finally {
-          completed += 1;
-          statusElement.textContent =
-            `${completed} von ${overview.uuids.length} Ergebnislisten verarbeitet ...`;
-        }
+    const response = await fetchJson(
+      buildWorkerUrl(competitionCode, { mode: "selection" }),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          items: selectedEvents.map(createSelectionRequestItem)
+        })
       }
     );
+    const responses = Array.isArray(response.results) ? response.results : [];
+    const eventsByKey = new Map(
+      selectedEvents.map((event) => [event.key, event])
+    );
+    const context = {
+      competitionCode,
+      competitionName: currentCatalog.competitionName || competitionCode,
+      competitionDate: getCatalogCompetitionDate()
+    };
+    const errors = [];
+    const resultGroups = responses.map((result) => {
+      const event = eventsByKey.get(result.key);
+
+      if (!event) {
+        errors.push(`${result.key}: Ergebnisliste ist nicht im Katalog.`);
+        return [];
+      }
+
+      if (result.error) {
+        errors.push(`${getDisciplineLabel(event)}: ${result.error}`);
+        return [];
+      }
+
+      try {
+        if (result.source === "live") {
+          const rows = normalizeLiveResultRows(result.data, event, context);
+
+          if (rows.length === 0) {
+            throw new Error("Keine Ergebniszeilen vorhanden.");
+          }
+
+          return rows;
+        }
+
+        return parseResultPage(result.html, context).map((row) => ({
+          ...row,
+          ageGroup: event.ageGroup || row.ageGroup,
+          gender: event.gender || row.gender,
+          discipline: getDisciplineLabel(event) || row.discipline
+        }));
+      } catch (error) {
+        errors.push(`${getDisciplineLabel(event)}: ${error.message}`);
+        return [];
+      }
+    });
 
     currentResults = resultGroups.flat();
     renderTable(currentResults);
     excelButton.disabled = currentResults.length === 0;
 
     let statusText =
-      `${overview.uuids.length} Ergebnislisten verarbeitet, ` +
+      `${selectedEvents.length} Ergebnislisten verarbeitet, ` +
       `${currentResults.length} Ergebniszeilen geladen`;
-    statusText += competitionDate
-      ? `, Wettkampfdatum: ${competitionDate}`
-      : ", Wettkampfdatum nicht erkannt";
 
     if (errors.length > 0) {
       statusText += `, ${errors.length} Ergebnislisten übersprungen`;
@@ -948,6 +1231,7 @@ async function loadAllResults() {
   } finally {
     competitionSelect.disabled = false;
     competitionInput.disabled = false;
+    setCatalogButtonsDisabled(false);
   }
 }
 
@@ -971,17 +1255,40 @@ competitionSelect.addEventListener("change", () => {
   setCompetitionControlsEnabled();
 
   if (competitionSelect.value === "__manual__") {
+    resetResultSelection();
     competitionInput.focus();
   } else if (competitionSelect.value) {
-    loadAllResults();
+    loadResultCatalog();
+  } else {
+    resetResultSelection();
   }
 });
-competitionInput.addEventListener("input", setCompetitionControlsEnabled);
+competitionInput.addEventListener("input", () => {
+  setCompetitionControlsEnabled();
+  resetResultSelection();
+});
 reloadCompetitionListButton.addEventListener("click", loadCompetitionList);
 competitionInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
-    loadAllResults();
+    loadResultCatalog();
   }
+});
+resultTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest(".result-tab");
+
+  if (tab && currentCatalog) {
+    setActiveEventType(tab.dataset.eventType);
+  }
+});
+resultCatalog.addEventListener("click", (event) => {
+  const button = event.target.closest(".result-choice-button");
+
+  if (!button || button.disabled) {
+    return;
+  }
+
+  const selectedEvents = catalogChoiceEvents.get(button.dataset.choiceId) || [];
+  loadSelectedResults(selectedEvents, button.dataset.choiceId);
 });
 
 initializeAuthentication();

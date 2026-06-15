@@ -1,8 +1,11 @@
 const COMPETITIONS_URL = "https://competition.dlrg.net/de/competitions";
+const LIVE_RESULTS_URL =
+  "https://dlrg.net/service.php?doc=apps/liveergebnisse&modus=data";
 const COMPETITIONS_FROM = "2025-01-01";
 const COMPETITIONS_TILL = "2099-12-31";
 const COMPETITION_RESULT_LIMIT = 50;
-const MAX_CONCURRENT_LIST_REQUESTS = 4;
+const MAX_CONCURRENT_REQUESTS = 4;
+const MAX_SELECTION_ITEMS = 120;
 
 export default {
   async fetch(request) {
@@ -10,10 +13,9 @@ export default {
     const competition = requestUrl.searchParams.get("competition");
     const uuid = requestUrl.searchParams.get("uuid");
     const mode = requestUrl.searchParams.get("mode");
-
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type"
     };
 
@@ -24,16 +26,12 @@ export default {
       });
     }
 
-    if (request.method !== "GET") {
-      return jsonResponse(
-        { error: "Nur GET-Anfragen werden unterstützt." },
-        405,
-        corsHeaders
-      );
-    }
-
     try {
       if (mode === "competitions") {
+        if (request.method !== "GET") {
+          return methodNotAllowed(corsHeaders);
+        }
+
         const competitions = await loadAllCompetitions();
 
         return jsonResponse(
@@ -56,9 +54,42 @@ export default {
         );
       }
 
+      if (mode === "catalog") {
+        if (request.method !== "GET") {
+          return methodNotAllowed(corsHeaders);
+        }
+
+        const catalog = await loadCompetitionCatalog(competition);
+        return jsonResponse(
+          catalog,
+          200,
+          corsHeaders,
+          "public, max-age=120"
+        );
+      }
+
+      if (mode === "selection") {
+        if (request.method !== "POST") {
+          return methodNotAllowed(corsHeaders);
+        }
+
+        const body = await readJsonBody(request);
+        const items = validateSelectionItems(body.items);
+        const results = await loadSelectedResults(competition, items);
+
+        return jsonResponse(
+          { competition, results },
+          200,
+          corsHeaders
+        );
+      }
+
+      if (request.method !== "GET") {
+        return methodNotAllowed(corsHeaders);
+      }
+
       const competitionBaseUrl =
         `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
-
       let targetUrl;
 
       if (uuid) {
@@ -93,6 +124,14 @@ export default {
   }
 };
 
+function methodNotAllowed(corsHeaders) {
+  return jsonResponse(
+    { error: "Diese Anfrage-Methode wird nicht unterstützt." },
+    405,
+    corsHeaders
+  );
+}
+
 function fetchUpstream(targetUrl) {
   return fetch(targetUrl, {
     redirect: "follow",
@@ -101,6 +140,17 @@ function fetchUpstream(targetUrl) {
       "User-Agent": "Mozilla/5.0"
     }
   });
+}
+
+async function fetchTextOrThrow(targetUrl, label) {
+  const response = await fetchUpstream(targetUrl);
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`${label}: HTTP ${response.status}`);
+  }
+
+  return text;
 }
 
 function jsonResponse(data, status, corsHeaders, cacheControl = "no-store") {
@@ -114,11 +164,594 @@ function jsonResponse(data, status, corsHeaders, cacheControl = "no-store") {
   });
 }
 
+async function readJsonBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    throw new Error("Der Anfrageinhalt ist kein gültiges JSON.");
+  }
+}
+
+function validateSelectionItems(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("Es wurden keine Ergebnislisten ausgewählt.");
+  }
+
+  if (items.length > MAX_SELECTION_ITEMS) {
+    throw new Error(
+      `Es können höchstens ${MAX_SELECTION_ITEMS} Ergebnislisten geladen werden.`
+    );
+  }
+
+  return items.map((item) => {
+    if (!item || typeof item !== "object") {
+      throw new Error("Eine ausgewählte Ergebnisliste ist ungültig.");
+    }
+
+    if (item.source === "competition") {
+      const uuid = String(item.uuid || "").toLowerCase();
+
+      if (!/^[0-9a-f-]{36}$/.test(uuid)) {
+        throw new Error("Eine Ergebnis-UUID ist ungültig.");
+      }
+
+      return {
+        key: String(item.key || `competition:${uuid}`),
+        source: "competition",
+        uuid
+      };
+    }
+
+    if (item.source === "live") {
+      const edvnummer = String(item.edvnummer || "");
+      const wkid = String(item.wkid || "");
+      const ak = String(item.ak || "").trim();
+
+      if (!/^\d{1,12}$/.test(edvnummer) || !/^\d{1,12}$/.test(wkid) || !ak) {
+        throw new Error("Eine Live-Ergebnisliste ist ungültig.");
+      }
+
+      if (ak.length > 250) {
+        throw new Error("Die Bezeichnung einer Ergebnisliste ist zu lang.");
+      }
+
+      return {
+        key: String(item.key || `live:${edvnummer}:${wkid}:${ak}`),
+        source: "live",
+        edvnummer,
+        wkid,
+        ak
+      };
+    }
+
+    throw new Error("Eine Ergebnisquelle ist ungültig.");
+  });
+}
+
+async function loadSelectedResults(competition, items) {
+  const competitionBaseUrl =
+    `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
+
+  return mapWithConcurrency(
+    items,
+    MAX_CONCURRENT_REQUESTS,
+    async (item) => {
+      try {
+        if (item.source === "competition") {
+          const html = await fetchTextOrThrow(
+            `${competitionBaseUrl}/results/${encodeURIComponent(item.uuid)}`,
+            `Ergebnisliste ${item.uuid}`
+          );
+
+          return {
+            key: item.key,
+            source: item.source,
+            html
+          };
+        }
+
+        const data = await fetchLiveResults(item);
+        return {
+          key: item.key,
+          source: item.source,
+          data
+        };
+      } catch (error) {
+        return {
+          key: item.key,
+          source: item.source,
+          error: String(error)
+        };
+      }
+    }
+  );
+}
+
+async function loadCompetitionCatalog(competition) {
+  const competitionBaseUrl =
+    `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
+  const [overviewHtml, competitionHtml] = await Promise.all([
+    fetchTextOrThrow(
+      `${competitionBaseUrl}/results`,
+      "Ergebnisübersicht"
+    ),
+    fetchTextOrThrow(
+      competitionBaseUrl,
+      "Wettkampfseite"
+    )
+  ]);
+  const details = extractResultDetails(overviewHtml);
+  const competitionEvents = normalizeCompetitionEvents(details.events || []);
+  let events = competitionEvents;
+  let source = "competition";
+  let warning = "";
+
+  const externalResultsUrl = extractExternalResultsUrl(competitionHtml);
+
+  if (externalResultsUrl) {
+    try {
+      const liveEvents = await loadLiveCatalog(externalResultsUrl);
+
+      if (liveEvents.length > 0) {
+        events = liveEvents;
+        source = "live";
+      }
+    } catch (error) {
+      warning =
+        `Zusätzliche Live-Ergebnisse konnten nicht geladen werden: ${error}`;
+    }
+  }
+
+  if (events.length === 0) {
+    throw new Error("In der Ergebnisübersicht wurden keine Listen gefunden.");
+  }
+
+  return {
+    competition,
+    competitionName: String(details.name || competition),
+    from: normalizeDate(details.from),
+    till: normalizeDate(details.till),
+    source,
+    warning,
+    count: events.length,
+    events: sortCatalogEvents(events)
+  };
+}
+
+function normalizeCompetitionEvents(events) {
+  return events
+    .filter((event) => event && event.id)
+    .map((event) => {
+      const uuid = String(event.id).toLowerCase();
+
+      return {
+        key: `competition:${uuid}`,
+        source: "competition",
+        uuid,
+        eventType:
+          String(event.eventType || "").toLowerCase() === "individual"
+            ? "Individual"
+            : "Team",
+        discipline: String(event.discipline || "").trim(),
+        gender: normalizeGender(event.gender),
+        ageGroup: String(event.agegroup || "").trim(),
+        round: normalizeCompetitionRound(event.round),
+        date: normalizeDate(event.date)
+      };
+    })
+    .filter((event) => event.discipline);
+}
+
+function normalizeGender(value) {
+  const normalized = String(value || "").toLowerCase();
+
+  if (normalized === "female" || normalized === "weiblich") {
+    return "w";
+  }
+
+  if (normalized === "male" || normalized === "männlich") {
+    return "m";
+  }
+
+  return "mixed";
+}
+
+function normalizeCompetitionRound(round) {
+  const value = round && round.type;
+  const normalized = String(value || "").toLowerCase();
+  const roundNumber = normalizeRoundNumber(round && round.round);
+
+  if (
+    normalized.includes("semi") ||
+    normalized.includes("quarter") ||
+    normalized.includes("intermediate") ||
+    normalized.includes("zwischen")
+  ) {
+    return `Zwischenlauf ${roundNumber || 1}`;
+  }
+
+  if (normalized.includes("final")) {
+    return "Finale";
+  }
+
+  if (
+    normalized.includes("heat") ||
+    normalized.includes("prelim") ||
+    normalized.includes("qualif") ||
+    normalized.includes("vorlauf")
+  ) {
+    return roundNumber
+      ? `Zwischenlauf ${roundNumber}`
+      : "Vorlauf";
+  }
+
+  if (roundNumber) {
+    return `Zwischenlauf ${roundNumber}`;
+  }
+
+  return value ? String(value) : "Ergebnis";
+}
+
+function normalizeRoundNumber(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 0;
+}
+
+function normalizeDate(value) {
+  const match = String(value || "").match(/\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : "";
+}
+
+function sortCatalogEvents(events) {
+  return [...events].sort((left, right) => {
+    const fields = ["eventType", "ageGroup", "discipline", "gender", "round"];
+
+    for (const field of fields) {
+      const comparison = String(left[field] || "").localeCompare(
+        String(right[field] || ""),
+        "de"
+      );
+
+      if (comparison) {
+        return comparison;
+      }
+    }
+
+    return left.key.localeCompare(right.key, "de");
+  });
+}
+
+async function loadLiveCatalog(externalResultsUrl) {
+  assertAllowedExternalUrl(externalResultsUrl);
+  const externalHtml = await fetchTextOrThrow(
+    externalResultsUrl,
+    "Externe Ergebnisseite"
+  );
+  const references = extractLiveReferences(externalHtml);
+
+  if (references.length === 0) {
+    return [];
+  }
+
+  const sourceCatalogs = await mapWithConcurrency(
+    references,
+    MAX_CONCURRENT_REQUESTS,
+    async (reference) => {
+      const data = await fetchLiveResults(reference);
+      return normalizeLiveEvents(reference, data);
+    }
+  );
+
+  return sourceCatalogs.flat();
+}
+
+function assertAllowedExternalUrl(value) {
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase();
+  const allowed =
+    hostname === "dlrg.de" ||
+    hostname.endsWith(".dlrg.de") ||
+    hostname === "dlrg.net" ||
+    hostname.endsWith(".dlrg.net");
+
+  if (url.protocol !== "https:" || !allowed) {
+    throw new Error("Die externe Ergebnisquelle ist nicht erlaubt.");
+  }
+}
+
+function extractLiveReferences(html) {
+  const references = [];
+  const seen = new Set();
+  const pattern =
+    /showLiveErgebnisse\([^,]+,\s*['"](\d+)['"]\s*,\s*(\d+)/g;
+  let match;
+
+  while ((match = pattern.exec(html)) !== null) {
+    const key = `${match[1]}:${match[2]}`;
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      references.push({
+        edvnummer: match[1],
+        wkid: match[2]
+      });
+    }
+  }
+
+  return references;
+}
+
+async function fetchLiveResults({ edvnummer, wkid, ak = "" }) {
+  const url = new URL(LIVE_RESULTS_URL);
+  url.searchParams.set("edvnummer", edvnummer);
+  url.searchParams.set("wkid", wkid);
+  url.searchParams.set("callback", "phraserCallback");
+
+  if (ak) {
+    url.searchParams.set("ak", ak);
+    url.searchParams.set("gld", "");
+    url.searchParams.set("qgld", "");
+  }
+
+  const response = await fetch(url.toString(), {
+    redirect: "follow",
+    headers: {
+      "Accept": "text/javascript,application/javascript",
+      "User-Agent": "Mozilla/5.0"
+    }
+  });
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Live-Ergebnisse ${wkid}: HTTP ${response.status}`);
+  }
+
+  return parseJsonpResponse(text);
+}
+
+function parseJsonpResponse(text) {
+  const start = text.indexOf("('");
+  const end = text.lastIndexOf("');");
+
+  if (start === -1 || end <= start) {
+    throw new Error("Die Live-Ergebnisquelle lieferte kein gültiges JSONP.");
+  }
+
+  const jsonText = decodeSingleQuotedString(text.slice(start + 2, end));
+
+  try {
+    return JSON.parse(jsonText);
+  } catch {
+    throw new Error("Die Live-Ergebnisquelle lieferte kein gültiges JSON.");
+  }
+}
+
+function decodeSingleQuotedString(value) {
+  let output = "";
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (character !== "\\") {
+      output += character;
+      continue;
+    }
+
+    index += 1;
+    const escaped = value[index];
+
+    if (escaped === "n") {
+      output += "\n";
+    } else if (escaped === "r") {
+      output += "\r";
+    } else if (escaped === "t") {
+      output += "\t";
+    } else if (escaped === "b") {
+      output += "\b";
+    } else if (escaped === "f") {
+      output += "\f";
+    } else if (escaped === "v") {
+      output += "\v";
+    } else if (escaped === "u") {
+      const hex = value.slice(index + 1, index + 5);
+
+      if (!/^[0-9a-f]{4}$/i.test(hex)) {
+        throw new Error("Ungültige Unicode-Escapesequenz in JSONP.");
+      }
+
+      output += String.fromCharCode(parseInt(hex, 16));
+      index += 4;
+    } else if (escaped === "x") {
+      const hex = value.slice(index + 1, index + 3);
+
+      if (!/^[0-9a-f]{2}$/i.test(hex)) {
+        throw new Error("Ungültige Escapesequenz in JSONP.");
+      }
+
+      output += String.fromCharCode(parseInt(hex, 16));
+      index += 2;
+    } else {
+      output += escaped;
+    }
+  }
+
+  return output;
+}
+
+function normalizeLiveEvents(reference, data) {
+  const sourceName = String(data.wkname || "");
+  const eventType = /individual/i.test(sourceName) ? "Individual" : "Team";
+  const round = normalizeLiveRound(sourceName);
+  const categories = Array.isArray(data.aks) ? data.aks : [];
+
+  return categories
+    .map((ak) => parseLiveCategory(String(ak), eventType, round))
+    .filter(Boolean)
+    .map((metadata) => ({
+      key:
+        `live:${reference.edvnummer}:${reference.wkid}:${metadata.ak}`,
+      source: "live",
+      edvnummer: reference.edvnummer,
+      wkid: reference.wkid,
+      ak: metadata.ak,
+      eventType,
+      discipline: metadata.discipline,
+      gender: metadata.gender,
+      ageGroup: metadata.ageGroup,
+      round,
+      date: ""
+    }));
+}
+
+function normalizeLiveRound(sourceName) {
+  const normalized = String(sourceName || "").toLowerCase();
+  const intermediateMatch = normalized.match(
+    /(?:zwischenlauf|intermediate|semi-?final|quarter-?final)\D*(\d+)?/
+  );
+
+  if (intermediateMatch) {
+    return `Zwischenlauf ${Number(intermediateMatch[1]) || 1}`;
+  }
+
+  if (normalized.includes("final")) {
+    return "Finale";
+  }
+
+  if (
+    normalized.includes("heat") ||
+    normalized.includes("prelim") ||
+    normalized.includes("qualif") ||
+    normalized.includes("vorlauf")
+  ) {
+    return "Vorlauf";
+  }
+
+  return "Ergebnis";
+}
+
+function parseLiveCategory(ak, eventType, round) {
+  const genderMatch = ak.match(/\s+(female|male|mixed)$/i);
+
+  if (!genderMatch) {
+    return null;
+  }
+
+  const gender = normalizeGender(genderMatch[1]);
+  const parts = ak
+    .slice(0, genderMatch.index)
+    .split(/\s+-\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length < 2) {
+    return null;
+  }
+
+  const ageGroup = parts.shift();
+  const disciplineParts = parts.filter(
+    (part) => !isRoundCategoryPart(part)
+  );
+  const discipline = disciplineParts.join(" - ").trim();
+
+  if (!discipline) {
+    return null;
+  }
+
+  return {
+    ak,
+    eventType,
+    round,
+    ageGroup,
+    gender,
+    discipline
+  };
+}
+
+function isRoundCategoryPart(value) {
+  return /^(?:finale?|vorlauf|heats?|preliminaries|qualifications?|zwischenlauf(?:\s+\d+)?|intermediate(?:\s+round)?(?:\s+\d+)?|semi-?finals?|quarter-?finals?)$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function extractResultDetails(html) {
+  const details = extractJsonProperty(html, "resultDetails");
+
+  if (!details || typeof details !== "object") {
+    throw new Error("Ergebnisübersicht konnte nicht ausgelesen werden.");
+  }
+
+  return details;
+}
+
+function extractExternalResultsUrl(html) {
+  const chunks = extractNextDataChunks(html);
+
+  for (const chunk of chunks) {
+    let searchFrom = 0;
+
+    while (searchFrom < chunk.length) {
+      const markerIndex = chunk.indexOf('"links":', searchFrom);
+
+      if (markerIndex === -1) {
+        break;
+      }
+
+      const valueStart = markerIndex + '"links":'.length;
+
+      try {
+        const links = JSON.parse(readJsonValue(chunk, valueStart));
+
+        if (Array.isArray(links)) {
+          const resultLink = links.find(
+            (link) =>
+              link &&
+              /^results?$/i.test(String(link.name || "").trim()) &&
+              link.url
+          );
+
+          if (resultLink) {
+            return String(resultLink.url);
+          }
+        }
+      } catch {
+        // Continue with another links property.
+      }
+
+      searchFrom = valueStart + 1;
+    }
+  }
+
+  return "";
+}
+
+function extractJsonProperty(html, propertyName) {
+  const marker = `"${propertyName}":`;
+  const chunks = extractNextDataChunks(html);
+
+  for (const chunk of chunks) {
+    const markerIndex = chunk.indexOf(marker);
+
+    if (markerIndex === -1) {
+      continue;
+    }
+
+    const valueStart = markerIndex + marker.length;
+
+    try {
+      return JSON.parse(readJsonValue(chunk, valueStart));
+    } catch {
+      // Continue with another script chunk.
+    }
+  }
+
+  return null;
+}
+
 async function loadAllCompetitions() {
   const ranges = createCompetitionRanges();
   const competitionGroups = await mapWithConcurrency(
     ranges,
-    MAX_CONCURRENT_LIST_REQUESTS,
+    MAX_CONCURRENT_REQUESTS,
     (range) => fetchCompetitionRange(range.from, range.till)
   );
   const competitionsByAcronym = new Map();
@@ -160,21 +793,13 @@ async function fetchCompetitionRange(from, till) {
   competitionsUrl.searchParams.set("from", from);
   competitionsUrl.searchParams.set("till", till);
 
-  const upstreamResponse = await fetchUpstream(competitionsUrl.toString());
-  const responseText = await upstreamResponse.text();
-
-  if (!upstreamResponse.ok) {
-    throw new Error(
-      `Wettkampfliste ${from} bis ${till}: HTTP ${upstreamResponse.status}`
-    );
-  }
-
+  const responseText = await fetchTextOrThrow(
+    competitionsUrl.toString(),
+    `Wettkampfliste ${from} bis ${till}`
+  );
   const competitions = extractCompetitions(responseText);
 
-  if (
-    competitions.length < COMPETITION_RESULT_LIMIT ||
-    from === till
-  ) {
+  if (competitions.length < COMPETITION_RESULT_LIMIT || from === till) {
     return competitions;
   }
 
@@ -256,7 +881,7 @@ function extractCompetitions(html) {
       const arrayStart = markerIndex + marker.length - 1;
 
       try {
-        const values = JSON.parse(readJsonArray(chunk, arrayStart));
+        const values = JSON.parse(readJsonValue(chunk, arrayStart));
 
         if (Array.isArray(values)) {
           const competitions = values
@@ -301,13 +926,26 @@ function extractNextDataChunks(html) {
   return chunks;
 }
 
-function readJsonArray(text, startIndex) {
+function readJsonValue(text, startIndex) {
+  let index = startIndex;
+
+  while (/\s/.test(text[index] || "")) {
+    index += 1;
+  }
+
+  const opening = text[index];
+  const closing = opening === "[" ? "]" : opening === "{" ? "}" : "";
+
+  if (!closing) {
+    throw new Error("JSON-Objekt oder -Array erwartet.");
+  }
+
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let index = startIndex; index < text.length; index += 1) {
-    const character = text[index];
+  for (let cursor = index; cursor < text.length; cursor += 1) {
+    const character = text[cursor];
 
     if (inString) {
       if (escaped) {
@@ -323,16 +961,16 @@ function readJsonArray(text, startIndex) {
 
     if (character === '"') {
       inString = true;
-    } else if (character === "[") {
+    } else if (character === opening) {
       depth += 1;
-    } else if (character === "]") {
+    } else if (character === closing) {
       depth -= 1;
 
       if (depth === 0) {
-        return text.slice(startIndex, index + 1);
+        return text.slice(index, cursor + 1);
       }
     }
   }
 
-  throw new Error("Unvollständige Wettkampfliste empfangen.");
+  throw new Error("Unvollständige JSON-Daten empfangen.");
 }
