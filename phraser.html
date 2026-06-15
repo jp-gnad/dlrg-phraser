@@ -8,9 +8,9 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css">
-  <script defer src="exceljs.min.js"></script>
-  <script defer src="phraser.js"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260615-3">
+  <script defer src="exceljs.min.js?v=20260615-3"></script>
+  <script defer src="phraser.js?v=20260615-3"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -19,6 +19,18 @@
       <h1 id="loginTitle">Zugang erforderlich</h1>
       <p class="login-hint">Bitte gib das aktuelle Passwort ein.</p>
 
+      <label class="visually-hidden" for="username">Benutzername</label>
+      <input
+        id="username"
+        class="visually-hidden"
+        name="username"
+        type="text"
+        value="DLRG Phraser"
+        autocomplete="username"
+        tabindex="-1"
+        aria-hidden="true"
+      >
+
       <label for="password">Passwort</label>
       <input
         id="password"
@@ -26,7 +38,6 @@
         type="password"
         autocomplete="current-password"
         required
-        autofocus
       >
 
       <button type="submit">Anmelden</button>
@@ -51,6 +62,14 @@
             <option value="">Wettkämpfe werden geladen ...</option>
           </select>
           <p id="competitionListInfo" class="field-hint" aria-live="polite"></p>
+          <button
+            id="reloadCompetitionListButton"
+            class="link-button"
+            type="button"
+            hidden
+          >
+            Wettkampfliste erneut laden
+          </button>
 
           <div id="manualCompetitionGroup" class="manual-competition" hidden>
             <label for="competition">Wettkampfcode manuell eingeben</label>

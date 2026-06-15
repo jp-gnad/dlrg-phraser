@@ -15,6 +15,9 @@ const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
 const competitionSelect = document.getElementById("competitionSelect");
 const competitionListInfo = document.getElementById("competitionListInfo");
+const reloadCompetitionListButton = document.getElementById(
+  "reloadCompetitionListButton"
+);
 const manualCompetitionGroup = document.getElementById(
   "manualCompetitionGroup"
 );
@@ -96,7 +99,9 @@ async function fetchText(url) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    cache: "no-store"
+  });
   const text = await response.text();
 
   if (!response.ok) {
@@ -181,6 +186,7 @@ function renderCompetitionOptions(competitions) {
 async function loadCompetitionList() {
   competitionSelect.disabled = true;
   loadButton.disabled = true;
+  reloadCompetitionListButton.hidden = true;
   competitionListInfo.className = "field-hint";
   competitionListInfo.textContent = "Wettkampfliste wird geladen ...";
 
@@ -199,6 +205,7 @@ async function loadCompetitionList() {
     renderCompetitionOptions(competitions);
     competitionListLoaded = true;
     competitionSelect.disabled = false;
+    reloadCompetitionListButton.hidden = true;
     competitionListInfo.textContent =
       `${competitions.length} Wettkämpfe ab dem 01.01.2025 geladen.`;
     competitionSelect.focus();
@@ -211,6 +218,7 @@ async function loadCompetitionList() {
     manualOption.textContent = "Wettkampfcode manuell eingeben";
     competitionSelect.appendChild(manualOption);
     competitionSelect.disabled = false;
+    reloadCompetitionListButton.hidden = false;
     competitionListInfo.className = "field-hint error";
     competitionListInfo.textContent =
       `Wettkampfliste nicht verfügbar: ${error.message}`;
@@ -402,26 +410,46 @@ function isResultSectionBoundary(value) {
   );
 }
 
+function getResultColumnType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "zeit" || normalized === "time") {
+    return "time";
+  }
+
+  if (
+    normalized === "platz" ||
+    normalized === "place" ||
+    normalized === "rank"
+  ) {
+    return "place";
+  }
+
+  return "";
+}
+
 function isRepeatedHeader(first, second, third) {
   const firstValue = String(first || "").trim().toLowerCase();
   const secondValue = String(second || "").trim().toLowerCase();
-  const thirdValue = String(third || "").trim().toLowerCase();
 
   return (
     firstValue === "name" &&
     (secondValue === "verein" || secondValue === "club") &&
-    (thirdValue === "zeit" || thirdValue === "time")
+    Boolean(getResultColumnType(third))
   );
 }
 
 function findResultHeader(tokens) {
   for (let index = 0; index < tokens.length - 2; index += 1) {
     if (isRepeatedHeader(tokens[index], tokens[index + 1], tokens[index + 2])) {
-      return index;
+      return {
+        index,
+        resultColumnType: getResultColumnType(tokens[index + 2])
+      };
     }
   }
 
-  return -1;
+  return null;
 }
 
 function findResultTitle(tokens, headerIndex) {
@@ -453,18 +481,43 @@ function findResultTitle(tokens, headerIndex) {
   return "";
 }
 
-function parseResultValue(firstValue, secondValue) {
+function parseResultValue(firstValue, secondValue, resultColumnType) {
   const first = String(firstValue || "").trim();
   const second = String(secondValue || "").trim();
 
+  if (resultColumnType === "place") {
+    const placementMatch = first.match(/^(\d+)\.?$/);
+
+    if (placementMatch) {
+      return {
+        place: Number(placementMatch[1]),
+        time: "",
+        status: "",
+        consumedValues: 1
+      };
+    }
+
+    if (looksLikeStatus(first)) {
+      return {
+        place: "",
+        time: "",
+        status: first,
+        consumedValues: 1
+      };
+    }
+
+    return { place: "", status: "", time: "", consumedValues: 0 };
+  }
+
   if (looksLikeTime(first)) {
-    return { time: first, status: "", consumedValues: 1 };
+    return { place: "", time: first, status: "", consumedValues: 1 };
   }
 
   const combinedMatch = first.match(/^(.+?)\s+(\d{1,3}:\d{2}[,.]\d{2})$/);
 
   if (combinedMatch && looksLikeStatus(combinedMatch[1])) {
     return {
+      place: "",
       status: combinedMatch[1].trim(),
       time: combinedMatch[2].trim(),
       consumedValues: 1
@@ -472,27 +525,32 @@ function parseResultValue(firstValue, secondValue) {
   }
 
   if (looksLikeStatus(first) && looksLikeTime(second)) {
-    return { status: first, time: second, consumedValues: 2 };
+    return {
+      place: "",
+      status: first,
+      time: second,
+      consumedValues: 2
+    };
   }
 
   if (looksLikeStatus(first)) {
-    return { status: first, time: "", consumedValues: 1 };
+    return { place: "", status: first, time: "", consumedValues: 1 };
   }
 
-  return { status: "", time: "", consumedValues: 0 };
+  return { place: "", status: "", time: "", consumedValues: 0 };
 }
 
 function parseResultPage(html, context) {
   const tokens = extractVisibleText(html);
-  const headerIndex = findResultHeader(tokens);
+  const resultHeader = findResultHeader(tokens);
 
-  if (headerIndex === -1) {
-    throw new Error("Überschriften Name/Verein/Zeit nicht gefunden.");
+  if (!resultHeader) {
+    throw new Error("Überschriften Name/Verein/Zeit oder Platz nicht gefunden.");
   }
 
-  const metadata = parseTitle(findResultTitle(tokens, headerIndex));
+  const metadata = parseTitle(findResultTitle(tokens, resultHeader.index));
   const results = [];
-  let index = headerIndex + 3;
+  let index = resultHeader.index + 3;
 
   while (index + 2 < tokens.length) {
     const name = tokens[index];
@@ -512,14 +570,21 @@ function parseResultPage(html, context) {
       break;
     }
 
-    const parsedValue = parseResultValue(firstResultValue, secondResultValue);
+    const parsedValue = parseResultValue(
+      firstResultValue,
+      secondResultValue,
+      resultHeader.resultColumnType
+    );
 
     if (parsedValue.consumedValues === 0) {
       break;
     }
 
     results.push({
-      place: results.length + 1,
+      place:
+        resultHeader.resultColumnType === "place"
+          ? parsedValue.place
+          : results.length + 1,
       competitionCode: context.competitionCode,
       competitionName: context.competitionName,
       competitionDate: context.competitionDate,
@@ -915,6 +980,7 @@ competitionSelect.addEventListener("change", () => {
   }
 });
 competitionInput.addEventListener("input", setCompetitionControlsEnabled);
+reloadCompetitionListButton.addEventListener("click", loadCompetitionList);
 competitionInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     loadAllResults();

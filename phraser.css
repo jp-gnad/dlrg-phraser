@@ -13,6 +13,18 @@
   display: none !important;
 }
 
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -138,6 +150,18 @@ h1 {
 
 .manual-competition {
   margin-top: 12px;
+}
+
+.link-button {
+  padding: 0;
+  color: #00549f;
+  background: transparent;
+  text-decoration: underline;
+}
+
+.link-button:hover:not(:disabled) {
+  color: #003f78;
+  background: transparent;
 }
 
 .competition-control select:disabled {
