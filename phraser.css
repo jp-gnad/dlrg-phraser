@@ -135,7 +135,7 @@ h1 {
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(320px, 620px) auto auto;
+  grid-template-columns: minmax(320px, 620px) auto;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;

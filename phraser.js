@@ -22,7 +22,6 @@ const manualCompetitionGroup = document.getElementById(
   "manualCompetitionGroup"
 );
 const competitionInput = document.getElementById("competition");
-const loadButton = document.getElementById("loadButton");
 const excelButton = document.getElementById("excelButton");
 const statusElement = document.getElementById("status");
 const resultTable = document.getElementById("resultTable");
@@ -135,12 +134,8 @@ function formatCompetitionDateRange(from, till) {
 
 function setCompetitionControlsEnabled() {
   const usesManualCode = competitionSelect.value === "__manual__";
-  const hasCompetitionCode = usesManualCode
-    ? Boolean(competitionInput.value.trim())
-    : Boolean(competitionSelect.value);
 
   manualCompetitionGroup.hidden = !usesManualCode;
-  loadButton.disabled = !hasCompetitionCode;
 }
 
 function renderCompetitionOptions(competitions) {
@@ -185,7 +180,6 @@ function renderCompetitionOptions(competitions) {
 
 async function loadCompetitionList() {
   competitionSelect.disabled = true;
-  loadButton.disabled = true;
   reloadCompetitionListButton.hidden = true;
   competitionListInfo.className = "field-hint";
   competitionListInfo.textContent = "Wettkampfliste wird geladen ...";
@@ -873,7 +867,8 @@ async function loadAllResults() {
     return;
   }
 
-  loadButton.disabled = true;
+  competitionSelect.disabled = true;
+  competitionInput.disabled = true;
   excelButton.disabled = true;
   currentResults = [];
   resultTable.replaceChildren();
@@ -951,7 +946,8 @@ async function loadAllResults() {
     statusElement.className = "status error";
     statusElement.textContent = `Fehler: ${error.message}`;
   } finally {
-    loadButton.disabled = false;
+    competitionSelect.disabled = false;
+    competitionInput.disabled = false;
   }
 }
 
@@ -970,13 +966,14 @@ loginForm.addEventListener("submit", (event) => {
 });
 
 logoutButton.addEventListener("click", lockApp);
-loadButton.addEventListener("click", loadAllResults);
 excelButton.addEventListener("click", exportToExcel);
 competitionSelect.addEventListener("change", () => {
   setCompetitionControlsEnabled();
 
   if (competitionSelect.value === "__manual__") {
     competitionInput.focus();
+  } else if (competitionSelect.value) {
+    loadAllResults();
   }
 });
 competitionInput.addEventListener("input", setCompetitionControlsEnabled);
