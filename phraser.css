@@ -27,7 +27,8 @@ body.auth-locked {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -46,6 +47,7 @@ button:hover:not(:disabled) {
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 summary:focus-visible {
   outline: 3px solid rgba(0, 104, 173, 0.35);
   outline-offset: 2px;
@@ -62,7 +64,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   padding: 10px;
   border: 1px solid #aeb7c0;
@@ -120,10 +123,26 @@ h1 {
 
 .controls {
   display: grid;
-  grid-template-columns: minmax(240px, 420px) auto auto;
+  grid-template-columns: minmax(320px, 620px) auto auto;
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;
+}
+
+.field-hint {
+  min-height: 18px;
+  margin: 5px 0 0;
+  color: #66717b;
+  font-size: 0.82rem;
+}
+
+.manual-competition {
+  margin-top: 12px;
+}
+
+.competition-control select:disabled {
+  color: #66717b;
+  background: #eef1f4;
 }
 
 .excel-button {

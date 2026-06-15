@@ -5,6 +5,7 @@ const MAX_CONCURRENT_REQUESTS = 4;
 const AUTH_SESSION_KEY = "dlrg-phraser-auth-year";
 
 let currentResults = [];
+let competitionListLoaded = false;
 
 const loginScreen = document.getElementById("loginScreen");
 const loginForm = document.getElementById("loginForm");
@@ -12,6 +13,11 @@ const passwordInput = document.getElementById("password");
 const loginError = document.getElementById("loginError");
 const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
+const competitionSelect = document.getElementById("competitionSelect");
+const competitionListInfo = document.getElementById("competitionListInfo");
+const manualCompetitionGroup = document.getElementById(
+  "manualCompetitionGroup"
+);
 const competitionInput = document.getElementById("competition");
 const loadButton = document.getElementById("loadButton");
 const excelButton = document.getElementById("excelButton");
@@ -34,7 +40,12 @@ function unlockApp() {
   loginScreen.hidden = true;
   app.hidden = false;
   document.body.classList.remove("auth-locked");
-  competitionInput.focus();
+
+  if (!competitionListLoaded) {
+    loadCompetitionList();
+  } else {
+    competitionSelect.focus();
+  }
 }
 
 function lockApp() {
@@ -57,7 +68,10 @@ function initializeAuthentication() {
 
 function buildWorkerUrl(competition, options = {}) {
   const url = new URL(WORKER_URL);
-  url.searchParams.set("competition", competition);
+
+  if (competition) {
+    url.searchParams.set("competition", competition);
+  }
 
   if (options.uuid) {
     url.searchParams.set("uuid", options.uuid);
@@ -79,6 +93,138 @@ async function fetchText(url) {
   }
 
   return text;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url);
+  const text = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${text.slice(0, 500)}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Die Wettkampfliste enthält kein gültiges JSON.");
+  }
+}
+
+function formatIsoDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : "";
+}
+
+function formatCompetitionDateRange(from, till) {
+  const fromDate = formatIsoDate(from);
+  const tillDate = formatIsoDate(till);
+
+  if (!fromDate) {
+    return "Datum unbekannt";
+  }
+
+  return tillDate && tillDate !== fromDate
+    ? `${fromDate} - ${tillDate}`
+    : fromDate;
+}
+
+function setCompetitionControlsEnabled() {
+  const usesManualCode = competitionSelect.value === "__manual__";
+  const hasCompetitionCode = usesManualCode
+    ? Boolean(competitionInput.value.trim())
+    : Boolean(competitionSelect.value);
+
+  manualCompetitionGroup.hidden = !usesManualCode;
+  loadButton.disabled = !hasCompetitionCode;
+}
+
+function renderCompetitionOptions(competitions) {
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Wettkampf auswählen ...";
+  competitionSelect.replaceChildren(placeholder);
+
+  const competitionsByYear = new Map();
+
+  competitions.forEach((competition) => {
+    const year = String(competition.from || "").slice(0, 4) || "Ohne Datum";
+
+    if (!competitionsByYear.has(year)) {
+      competitionsByYear.set(year, []);
+    }
+
+    competitionsByYear.get(year).push(competition);
+  });
+
+  competitionsByYear.forEach((yearCompetitions, year) => {
+    const group = document.createElement("optgroup");
+    group.label = year;
+
+    yearCompetitions.forEach((competition) => {
+      const option = document.createElement("option");
+      option.value = competition.acronym;
+      option.textContent =
+        `${formatCompetitionDateRange(competition.from, competition.till)} | ` +
+        `${competition.name} (${competition.acronym})`;
+      group.appendChild(option);
+    });
+
+    competitionSelect.appendChild(group);
+  });
+
+  const manualOption = document.createElement("option");
+  manualOption.value = "__manual__";
+  manualOption.textContent = "Anderen Wettkampfcode manuell eingeben ...";
+  competitionSelect.appendChild(manualOption);
+}
+
+async function loadCompetitionList() {
+  competitionSelect.disabled = true;
+  loadButton.disabled = true;
+  competitionListInfo.className = "field-hint";
+  competitionListInfo.textContent = "Wettkampfliste wird geladen ...";
+
+  try {
+    const response = await fetchJson(
+      buildWorkerUrl("", { mode: "competitions" })
+    );
+    const competitions = Array.isArray(response.competitions)
+      ? response.competitions
+      : [];
+
+    if (competitions.length === 0) {
+      throw new Error("Keine Wettkämpfe ab dem 01.01.2025 gefunden.");
+    }
+
+    renderCompetitionOptions(competitions);
+    competitionListLoaded = true;
+    competitionSelect.disabled = false;
+    competitionListInfo.textContent =
+      `${competitions.length} Wettkämpfe ab dem 01.01.2025 geladen.`;
+    competitionSelect.focus();
+  } catch (error) {
+    console.error(error);
+    competitionSelect.replaceChildren();
+
+    const manualOption = document.createElement("option");
+    manualOption.value = "__manual__";
+    manualOption.textContent = "Wettkampfcode manuell eingeben";
+    competitionSelect.appendChild(manualOption);
+    competitionSelect.disabled = false;
+    competitionListInfo.className = "field-hint error";
+    competitionListInfo.textContent =
+      `Wettkampfliste nicht verfügbar: ${error.message}`;
+    manualCompetitionGroup.hidden = false;
+    competitionInput.focus();
+  }
+
+  setCompetitionControlsEnabled();
+}
+
+function getSelectedCompetitionCode() {
+  return competitionSelect.value === "__manual__"
+    ? competitionInput.value.trim()
+    : competitionSelect.value;
 }
 
 function decodeHtmlEntities(value) {
@@ -625,7 +771,7 @@ async function exportToExcel() {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     });
     const competitionCode =
-      createSafeFileNamePart(competitionInput.value) || "Wettkampf";
+      createSafeFileNamePart(getSelectedCompetitionCode()) || "Wettkampf";
     const datePart = String(firstResult.competitionDate || "")
       .split(".")
       .reverse()
@@ -654,7 +800,7 @@ async function exportToExcel() {
 }
 
 async function loadAllResults() {
-  const competitionCode = competitionInput.value.trim();
+  const competitionCode = getSelectedCompetitionCode();
 
   if (!competitionCode) {
     statusElement.className = "status error";
@@ -761,6 +907,14 @@ loginForm.addEventListener("submit", (event) => {
 logoutButton.addEventListener("click", lockApp);
 loadButton.addEventListener("click", loadAllResults);
 excelButton.addEventListener("click", exportToExcel);
+competitionSelect.addEventListener("change", () => {
+  setCompetitionControlsEnabled();
+
+  if (competitionSelect.value === "__manual__") {
+    competitionInput.focus();
+  }
+});
+competitionInput.addEventListener("input", setCompetitionControlsEnabled);
 competitionInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     loadAllResults();

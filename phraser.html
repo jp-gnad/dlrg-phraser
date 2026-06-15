@@ -45,18 +45,25 @@
       </div>
 
       <div class="controls">
-        <div>
-          <label for="competition">Wettkampfcode</label>
-          <input
-            id="competition"
-            type="text"
-            value="LMMRP2026"
-            autocomplete="off"
-            spellcheck="false"
-          >
+        <div class="competition-control">
+          <label for="competitionSelect">Wettkampf</label>
+          <select id="competitionSelect" disabled>
+            <option value="">Wettkämpfe werden geladen ...</option>
+          </select>
+          <p id="competitionListInfo" class="field-hint" aria-live="polite"></p>
+
+          <div id="manualCompetitionGroup" class="manual-competition" hidden>
+            <label for="competition">Wettkampfcode manuell eingeben</label>
+            <input
+              id="competition"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            >
+          </div>
         </div>
 
-        <button id="loadButton" type="button">Alle Ergebnisse laden</button>
+        <button id="loadButton" type="button" disabled>Alle Ergebnisse laden</button>
         <button id="excelButton" class="excel-button" type="button" disabled>
           Als Excel speichern
         </button>
