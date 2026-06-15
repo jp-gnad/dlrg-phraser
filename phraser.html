@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
+  >
+  <title>DLRG Phraser</title>
+  <link rel="stylesheet" href="phraser.css">
+  <script defer src="exceljs.min.js"></script>
+  <script defer src="phraser.js"></script>
+</head>
+<body class="auth-locked">
+  <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
+    <form id="loginForm" class="login-card">
+      <p class="eyebrow">DLRG Phraser</p>
+      <h1 id="loginTitle">Zugang erforderlich</h1>
+      <p class="login-hint">Bitte gib das aktuelle Passwort ein.</p>
+
+      <label for="password">Passwort</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+        autofocus
+      >
+
+      <button type="submit">Anmelden</button>
+      <p id="loginError" class="login-error" role="alert" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <section class="card">
+      <div class="heading-row">
+        <div>
+          <p class="eyebrow">DLRG Phraser</p>
+          <h1 id="pageTitle">Wettkampfergebnisse</h1>
+        </div>
+        <button id="logoutButton" class="secondary-button" type="button">Abmelden</button>
+      </div>
+
+      <div class="controls">
+        <div>
+          <label for="competition">Wettkampfcode</label>
+          <input
+            id="competition"
+            type="text"
+            value="LMMRP2026"
+            autocomplete="off"
+            spellcheck="false"
+          >
+        </div>
+
+        <button id="loadButton" type="button">Alle Ergebnisse laden</button>
+        <button id="excelButton" class="excel-button" type="button" disabled>
+          Als Excel speichern
+        </button>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite">Bereit.</div>
+
+      <div class="table-wrapper">
+        <table id="resultTable"></table>
+      </div>
+
+      <details id="errorDetails" hidden>
+        <summary>Übersprungene Ergebnislisten anzeigen</summary>
+        <pre id="errorOutput"></pre>
+      </details>
+    </section>
+  </main>
+</body>
+</html>
