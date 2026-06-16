@@ -1,0 +1,94 @@
+{
+  "competitions": [
+    {
+      "acronym": "MDRM2026",
+      "name": "MDRM 2026 Riesa",
+      "from": "2026-04-25",
+      "till": "2026-04-26"
+    },
+    {
+      "acronym": "JEM2024",
+      "name": "Junioren-Europameisterschaften 2024",
+      "from": "2024-06-29",
+      "till": "2024-07-05"
+    },
+    {
+      "acronym": "BZM_REK2026",
+      "name": "Bezirksmeisterschaften Rhein-Erft-Kreis 2026",
+      "from": "2026-03-21",
+      "till": "2026-03-22"
+    },
+    {
+      "acronym": "BMM2025",
+      "name": "Bayerische Mehrkampf-Meisterschaften im Rettungsschwimmen 2025",
+      "from": "2025-07-06",
+      "till": "2025-07-06"
+    }
+  ],
+  "resultPages": {
+    "BMM2025": [
+      "https://bayern.dlrg-jugend.de/veranstaltungen/bmm/live/"
+    ],
+    "BMSKA2026": [
+      "https://bez-karlsruhe.dlrg-jugend.de/angebote/srus/live-ergebnisse/"
+    ],
+    "BZM_REK2026": [
+      "https://erftkreis.dlrg.de/mitmachen/rettungssport/bezirksmeisterschaften-live-ergebnisse/"
+    ],
+    "BZM2026": [
+      "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/einzel-ergebnisse/",
+      "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/mannschaft-ergebnisse/"
+    ],
+    "KVM_NBG2026": [
+      "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
+    ],
+    "KVM-NBG2026": [
+      "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
+    ],
+    "LVM_WE_1_2026": [
+      "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
+    ],
+    "LVM_POOL_2026_TEIL1_EINZEL": [
+      "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
+    ],
+    "LVM_NR2026": [
+      "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-einzel/",
+      "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-mannschaft/"
+    ],
+    "JEM2024": [
+      "https://www.dlrg.de/jem2024/ergebnisse/"
+    ],
+    "MDRM2026": [
+      "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mdrm-liveergebnisse-einzelwettkaempfe/",
+      "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mannschaftswettkaempfe-liveergebnisse/"
+    ],
+    "NI-LM2026": [
+      "https://niedersachsen.dlrg-jugend.de/veranstaltungen/landes/landesmeisterschaften/lm2026-einzel-live-ergebnisse/"
+    ],
+    "WM2026": [
+      "https://wuerttemberg.dlrg-jugend.de/liveticker/"
+    ]
+  },
+  "eventTypes": {
+    "01070005:467": "Individual",
+    "0202001:755": "Individual",
+    "0826000:174": "Individual",
+    "0826000:177": "Team",
+    "1300000:842": "Individual",
+    "1300000:843": "Team",
+    "1600000:549": "Team",
+    "1600000:550": "Individual",
+    "1600000:551": "Team",
+    "1600000:552": "Team",
+    "1600000:553": "Individual",
+    "1600000:554": "Team",
+    "0210000:709": "Team",
+    "0861000:828": "Individual",
+    "0906000:846": "Individual",
+    "0906000:847": "Team",
+    "1602001:862": "Individual",
+    "1602001:863": "Team",
+    "14300005:881": "Team",
+    "14300005:882": "Individual"
+  }
+}

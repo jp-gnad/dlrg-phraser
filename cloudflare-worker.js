@@ -1,77 +1,17 @@
 const COMPETITIONS_URL = "https://competition.dlrg.net/de/competitions";
 const LIVE_RESULTS_URL =
   "https://dlrg.net/service.php?doc=apps/liveergebnisse&modus=data";
+const LIVE_SOURCES_URL =
+  "https://jp-gnad.github.io/dlrg-phraser/live-sources.json";
 const COMPETITIONS_FROM = "2020-01-01";
 const COMPETITIONS_TILL = "2099-12-31";
 const COMPETITION_RESULT_LIMIT = 50;
 const MAX_CONCURRENT_REQUESTS = 4;
 const MAX_SELECTION_ITEMS = 120;
-const KNOWN_LIVE_COMPETITIONS = [
-  {
-    acronym: "MDRM2026",
-    name: "MDRM 2026 Riesa",
-    from: "2026-04-25",
-    till: "2026-04-26"
-  },
-  {
-    acronym: "JEM2024",
-    name: "Junioren-Europameisterschaften 2024",
-    from: "2024-06-29",
-    till: "2024-07-05"
-  }
-];
-const KNOWN_LIVE_RESULT_PAGES = {
-  BMSKA2026: [
-    "https://bez-karlsruhe.dlrg-jugend.de/angebote/srus/live-ergebnisse/"
-  ],
-  BZM2026: [
-    "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/einzel-ergebnisse/",
-    "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/mannschaft-ergebnisse/"
-  ],
-  KVM_NBG2026: [
-    "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
-  ],
-  "KVM-NBG2026": [
-    "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
-  ],
-  LVM_WE_1_2026: [
-    "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
-  ],
-  LVM_POOL_2026_TEIL1_EINZEL: [
-    "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
-  ],
-  LVM_NR2026: [
-    "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-einzel/",
-    "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-mannschaft/"
-  ],
-  JEM2024: [
-    "https://www.dlrg.de/jem2024/ergebnisse/"
-  ],
-  MDRM2026: [
-    "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mdrm-liveergebnisse-einzelwettkaempfe/",
-    "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mannschaftswettkaempfe-liveergebnisse/"
-  ],
-  WM2026: [
-    "https://wuerttemberg.dlrg-jugend.de/liveticker/"
-  ]
-};
-const KNOWN_LIVE_EVENT_TYPES = {
-  "01070005:467": "Individual",
-  "0202001:755": "Individual",
-  "0826000:174": "Individual",
-  "0826000:177": "Team",
-  "1300000:842": "Individual",
-  "1300000:843": "Team",
-  "1600000:549": "Team",
-  "1600000:550": "Individual",
-  "1600000:551": "Team",
-  "1600000:552": "Team",
-  "1600000:553": "Individual",
-  "1600000:554": "Team",
-  "1602001:862": "Individual",
-  "1602001:863": "Team",
-  "14300005:881": "Team",
-  "14300005:882": "Individual"
+const LIVE_SOURCE_CACHE_MS = 5 * 60 * 1000;
+let liveSourceConfigCache = {
+  expiresAt: 0,
+  config: createEmptyLiveSourceConfig()
 };
 
 export default {
@@ -335,10 +275,13 @@ async function loadSelectedResults(competition, items) {
 }
 
 async function loadCompetitionCatalog(competition) {
-  const knownLiveCompetition = getKnownLiveCompetition(competition);
   const competitionBaseUrl =
     `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
-  const [overviewResult, competitionResult] = await Promise.all([
+  const [
+    overviewResult,
+    competitionResult,
+    liveSourceConfig
+  ] = await Promise.all([
     fetchTextResult(
       `${competitionBaseUrl}/results`,
       "Ergebnisübersicht"
@@ -346,8 +289,13 @@ async function loadCompetitionCatalog(competition) {
     fetchTextResult(
       competitionBaseUrl,
       "Wettkampfseite"
-    )
+    ),
+    loadLiveSourceConfig()
   ]);
+  const knownLiveCompetition = getKnownLiveCompetition(
+    liveSourceConfig,
+    competition
+  );
   const details = overviewResult.ok
     ? extractResultDetailsOrFallback(
       overviewResult.text,
@@ -372,7 +320,14 @@ async function loadCompetitionCatalog(competition) {
     warnings.push(competitionResult.error);
   }
 
-  const liveResultUrls = getKnownLiveResultPages(competition);
+  if (liveSourceConfig.warning) {
+    warnings.push(liveSourceConfig.warning);
+  }
+
+  const liveResultUrls = getKnownLiveResultPages(
+    liveSourceConfig,
+    competition
+  );
   const externalResultsUrl = competitionResult.ok
     ? extractExternalResultsUrl(competitionResult.text)
     : "";
@@ -386,7 +341,7 @@ async function loadCompetitionCatalog(competition) {
       const liveCatalogs = await mapWithConcurrency(
         dedupeValues(liveResultUrls),
         MAX_CONCURRENT_REQUESTS,
-        (url) => loadLiveCatalog(url)
+        (url) => loadLiveCatalog(url, liveSourceConfig)
       );
       const liveEvents = dedupeCatalogEvents(liveCatalogs.flat());
 
@@ -405,18 +360,26 @@ async function loadCompetitionCatalog(competition) {
     throw new Error("In der Ergebnisübersicht wurden keine Listen gefunden.");
   }
 
+  const useKnownLiveMetadata =
+    knownLiveCompetition && competitionEvents.length === 0;
+
   return {
     competition,
     competitionName: String(
-      details.name ||
+      (useKnownLiveMetadata && knownLiveCompetition.name) ||
+        details.name ||
         (knownLiveCompetition && knownLiveCompetition.name) ||
         competition
     ),
     from: normalizeDate(
-      details.from || (knownLiveCompetition && knownLiveCompetition.from)
+      (useKnownLiveMetadata && knownLiveCompetition.from) ||
+        details.from ||
+        (knownLiveCompetition && knownLiveCompetition.from)
     ),
     till: normalizeDate(
-      details.till || (knownLiveCompetition && knownLiveCompetition.till)
+      (useKnownLiveMetadata && knownLiveCompetition.till) ||
+        details.till ||
+        (knownLiveCompetition && knownLiveCompetition.till)
     ),
     source,
     warning: warnings.join(" "),
@@ -440,15 +403,109 @@ async function fetchTextResult(targetUrl, label) {
   }
 }
 
-function getKnownLiveResultPages(competition) {
-  return KNOWN_LIVE_RESULT_PAGES[String(competition || "").toUpperCase()]
-    ? [...KNOWN_LIVE_RESULT_PAGES[String(competition || "").toUpperCase()]]
+async function loadLiveSourceConfig() {
+  const now = Date.now();
+
+  if (liveSourceConfigCache.expiresAt > now) {
+    return liveSourceConfigCache.config;
+  }
+
+  try {
+    const response = await fetch(LIVE_SOURCES_URL, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const config = normalizeLiveSourceConfig(await response.json());
+    liveSourceConfigCache = {
+      expiresAt: now + LIVE_SOURCE_CACHE_MS,
+      config
+    };
+
+    return config;
+  } catch (error) {
+    const config = {
+      ...createEmptyLiveSourceConfig(),
+      warning:
+        `Live-Quellen-Konfiguration konnte nicht geladen werden: ${error}`
+    };
+    liveSourceConfigCache = {
+      expiresAt: now + 60 * 1000,
+      config
+    };
+
+    return config;
+  }
+}
+
+function createEmptyLiveSourceConfig() {
+  return {
+    competitions: [],
+    resultPages: {},
+    eventTypes: {},
+    warning: ""
+  };
+}
+
+function normalizeLiveSourceConfig(config) {
+  const output = createEmptyLiveSourceConfig();
+
+  if (Array.isArray(config && config.competitions)) {
+    output.competitions = config.competitions
+      .filter((competition) => competition && competition.acronym)
+      .map((competition) => ({
+        acronym: String(competition.acronym).trim(),
+        name: String(competition.name || competition.acronym).trim(),
+        from: normalizeDate(competition.from),
+        till: normalizeDate(competition.till)
+      }))
+      .filter((competition) => competition.acronym && competition.name);
+  }
+
+  if (config && config.resultPages && typeof config.resultPages === "object") {
+    Object.entries(config.resultPages).forEach(([code, urls]) => {
+      const acronym = String(code || "").trim().toUpperCase();
+
+      if (!acronym || !Array.isArray(urls)) {
+        return;
+      }
+
+      output.resultPages[acronym] = urls
+        .map((url) => String(url || "").trim())
+        .filter(Boolean);
+    });
+  }
+
+  if (config && config.eventTypes && typeof config.eventTypes === "object") {
+    Object.entries(config.eventTypes).forEach(([key, value]) => {
+      const normalizedType =
+        String(value || "").toLowerCase() === "individual"
+          ? "Individual"
+          : "Team";
+
+      output.eventTypes[String(key || "").trim()] = normalizedType;
+    });
+  }
+
+  return output;
+}
+
+function getKnownLiveResultPages(liveSourceConfig, competition) {
+  const acronym = String(competition || "").toUpperCase();
+  return liveSourceConfig.resultPages[acronym]
+    ? [...liveSourceConfig.resultPages[acronym]]
     : [];
 }
 
-function getKnownLiveCompetition(competition) {
+function getKnownLiveCompetition(liveSourceConfig, competition) {
   const acronym = String(competition || "").toUpperCase();
-  return KNOWN_LIVE_COMPETITIONS.find(
+  return liveSourceConfig.competitions.find(
     (item) => item.acronym.toUpperCase() === acronym
   );
 }
@@ -587,7 +644,7 @@ function sortCatalogEvents(events) {
   });
 }
 
-async function loadLiveCatalog(externalResultsUrl) {
+async function loadLiveCatalog(externalResultsUrl, liveSourceConfig) {
   assertAllowedExternalUrl(externalResultsUrl);
   const externalHtml = await fetchTextOrThrow(
     externalResultsUrl,
@@ -604,7 +661,7 @@ async function loadLiveCatalog(externalResultsUrl) {
     MAX_CONCURRENT_REQUESTS,
     async (reference) => {
       const data = await fetchLiveResults(reference);
-      return normalizeLiveEvents(reference, data);
+      return normalizeLiveEvents(reference, data, liveSourceConfig);
     }
   );
 
@@ -746,10 +803,10 @@ function decodeSingleQuotedString(value) {
   return output;
 }
 
-function normalizeLiveEvents(reference, data) {
+function normalizeLiveEvents(reference, data, liveSourceConfig) {
   const sourceName = String(data.wkname || "");
   const eventType =
-    KNOWN_LIVE_EVENT_TYPES[`${reference.edvnummer}:${reference.wkid}`] ||
+    liveSourceConfig.eventTypes[`${reference.edvnummer}:${reference.wkid}`] ||
     (/individual|einzel/i.test(sourceName) ? "Individual" : "Team");
   const round = normalizeLiveRound(sourceName);
   const categories = Array.isArray(data.aks) ? data.aks : [];
@@ -764,11 +821,11 @@ function normalizeLiveEvents(reference, data) {
       edvnummer: reference.edvnummer,
       wkid: reference.wkid,
       ak: metadata.ak,
-      eventType,
+      eventType: metadata.eventType,
       discipline: metadata.discipline,
       gender: metadata.gender,
       ageGroup: metadata.ageGroup,
-      round,
+      round: metadata.round,
       date: ""
     }));
 }
@@ -815,7 +872,9 @@ function parseLiveCategory(ak, eventType, round) {
     .map((part) => part.trim())
     .filter(Boolean);
 
-  const ageGroup = parts.shift();
+  const firstPart = parts.shift() || "";
+  const categoryEventType = getLiveCategoryEventType(firstPart) || eventType;
+  const ageGroup = stripLiveCategoryEventType(firstPart);
   const roundFromCategory = parts
     .map((part) => normalizeLiveCategoryRound(part))
     .find(Boolean);
@@ -826,12 +885,33 @@ function parseLiveCategory(ak, eventType, round) {
 
   return {
     ak,
-    eventType,
+    eventType: categoryEventType,
     round: roundFromCategory || round,
     ageGroup,
     gender,
     discipline
   };
+}
+
+function getLiveCategoryEventType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (/^(?:einzel|individual)\b/.test(normalized)) {
+    return "Individual";
+  }
+
+  if (/^(?:mannschaft|team|relay|staffel)\b/.test(normalized)) {
+    return "Team";
+  }
+
+  return "";
+}
+
+function stripLiveCategoryEventType(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^(?:einzel|individual|mannschaft|team|relay|staffel)\s+/i, "")
+    .trim();
 }
 
 function normalizeLiveCategoryRound(value) {
@@ -946,18 +1026,21 @@ function extractJsonProperty(html, propertyName) {
 
 async function loadAllCompetitions() {
   const ranges = createCompetitionRanges();
-  const competitionGroups = await mapWithConcurrency(
-    ranges,
-    MAX_CONCURRENT_REQUESTS,
-    (range) => fetchCompetitionRange(range.from, range.till)
-  );
+  const [competitionGroups, liveSourceConfig] = await Promise.all([
+    mapWithConcurrency(
+      ranges,
+      MAX_CONCURRENT_REQUESTS,
+      (range) => fetchCompetitionRange(range.from, range.till)
+    ),
+    loadLiveSourceConfig()
+  ]);
   const competitionsByAcronym = new Map();
 
   competitionGroups.flat().forEach((competition) => {
     competitionsByAcronym.set(competition.acronym, competition);
   });
 
-  KNOWN_LIVE_COMPETITIONS.forEach((competition) => {
+  liveSourceConfig.competitions.forEach((competition) => {
     if (!competitionsByAcronym.has(competition.acronym)) {
       competitionsByAcronym.set(competition.acronym, competition);
     }
