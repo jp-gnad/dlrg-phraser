@@ -190,7 +190,7 @@ async function loadCompetitionList() {
       : [];
 
     if (competitions.length === 0) {
-      throw new Error("Keine Wettkämpfe ab dem 01.01.2025 gefunden.");
+      throw new Error("Keine Wettkämpfe ab dem 01.01.2020 gefunden.");
     }
 
     renderCompetitionOptions(competitions);
@@ -198,7 +198,7 @@ async function loadCompetitionList() {
     competitionSelect.disabled = false;
     reloadCompetitionListButton.hidden = true;
     competitionListInfo.textContent =
-      `${competitions.length} Wettkämpfe ab dem 01.01.2025 geladen.`;
+      `${competitions.length} Wettkämpfe ab dem 01.01.2020 geladen.`;
     competitionSelect.focus();
   } catch (error) {
     console.error(error);
@@ -562,7 +562,12 @@ function parseTitle(title) {
 }
 
 function looksLikeTime(value) {
-  return /^\d{1,3}:\d{2}[,.]\d{2}$/.test(String(value || "").trim());
+  const normalized = String(value || "").trim();
+
+  return (
+    /^\d{1,3}:\d{2}[,.]\d{2}$/.test(normalized) ||
+    /^-:--[,.]--$/.test(normalized)
+  );
 }
 
 function looksLikeStatus(value) {
@@ -719,7 +724,9 @@ function parseResultValue(firstValue, secondValue, resultColumnType) {
     return { place: "", time: first, status: "", consumedValues: 1 };
   }
 
-  const combinedMatch = first.match(/^(.+?)\s+(\d{1,3}:\d{2}[,.]\d{2})$/);
+  const combinedMatch = first.match(
+    /^(.+?)\s+(\d{1,3}:\d{2}[,.]\d{2}|-:--[,.]--)$/
+  );
 
   if (combinedMatch && looksLikeStatus(combinedMatch[1])) {
     return {
@@ -816,7 +823,7 @@ function parseResultPage(html, context) {
 function createCell(row, value, type, className = "") {
   const cell = document.createElement(type);
   const text = value === undefined || value === null ? "" : String(value);
-  cell.textContent = text || "–";
+  cell.textContent = text || "-";
 
   if (!text) {
     cell.classList.add("empty-cell");
@@ -832,6 +839,7 @@ function createCell(row, value, type, className = "") {
 
 function renderTable(results) {
   resultTable.replaceChildren();
+  resultTable.className = "";
 
   const headers = [
     "Platz",
@@ -869,6 +877,127 @@ function renderTable(results) {
   });
 
   resultTable.append(thead, tbody);
+}
+
+function isLiveMultiDisciplineData(data) {
+  return (
+    Array.isArray(data && data.disziplinen) &&
+    data.disziplinen
+      .map((discipline) => String(discipline || "").trim())
+      .filter(Boolean).length > 1
+  );
+}
+
+function getLiveDisciplines(data) {
+  return Array.isArray(data && data.disziplinen)
+    ? data.disziplinen
+        .map((discipline, index) => ({
+          name: String(discipline || "").trim(),
+          fieldNumber: index + 1
+        }))
+        .filter((discipline) => discipline.name)
+    : [];
+}
+
+function renderLiveMultiDisciplineTable(data, event, context) {
+  const rows = Array.isArray(data && data.daten) ? data.daten : [];
+  const disciplines = getLiveDisciplines(data);
+  resultTable.replaceChildren();
+  resultTable.className = "multi-discipline-table";
+
+  const caption = document.createElement("caption");
+  caption.textContent = [
+    event.ageGroup,
+    getGenderLabel(event.gender),
+    getDisciplineLabel(event)
+  ].filter(Boolean).join(" - ");
+
+  const headers = [
+    "Gesamtplatz",
+    "Name",
+    "Gliederung",
+    "Gesamtpunkte",
+    "Diff. zu Platz 1",
+    ...disciplines.map((discipline) => discipline.name)
+  ];
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headers.forEach((header) => createCell(headerRow, header, "th"));
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement("tbody");
+
+  rows.forEach((sourceRow, index) => {
+    const row = document.createElement("tr");
+    createCell(
+      row,
+      sourceRow.platz === undefined || sourceRow.platz === null
+        ? ""
+        : sourceRow.platz,
+      "td",
+      "number-cell"
+    );
+    createCell(
+      row,
+      String(sourceRow.name || "").trim(),
+      "td"
+    );
+    createCell(row, String(sourceRow.gliederung || "").trim(), "td");
+    createCell(row, String(sourceRow.punkte || "").trim(), "td", "number-cell");
+    createCell(row, String(sourceRow.diff || "").trim(), "td", "number-cell");
+
+    disciplines.forEach((discipline) => {
+      const rawTime =
+        String(sourceRow[`zeit ${discipline.fieldNumber}`] || "").trim();
+      const points =
+        String(sourceRow[`punkte ${discipline.fieldNumber}`] || "").trim();
+      const penalty =
+        String(sourceRow[`strafe ${discipline.fieldNumber}`] || "").trim();
+      row.appendChild(createLiveDisciplineCell(rawTime, points, penalty));
+    });
+
+    tbody.appendChild(row);
+  });
+
+  resultTable.append(caption, thead, tbody);
+}
+
+function createLiveDisciplineCell(rawTime, points, penalty) {
+  const cell = document.createElement("td");
+  const cleanTime = String(rawTime || "").trim();
+  const cleanPoints = String(points || "").trim();
+  const cleanPenalty = String(penalty || "").trim();
+
+  cell.className = "multi-discipline-cell";
+
+  if (!cleanTime && !cleanPoints && !cleanPenalty) {
+    cell.classList.add("empty-cell");
+    cell.textContent = "-";
+    return cell;
+  }
+
+  if (cleanTime) {
+    const timeLine = document.createElement("span");
+    timeLine.className = "discipline-time";
+    timeLine.textContent = cleanTime;
+    cell.appendChild(timeLine);
+  }
+
+  if (cleanPoints) {
+    const pointsLine = document.createElement("span");
+    pointsLine.className = "discipline-points";
+    pointsLine.textContent = `${cleanPoints} Punkte`;
+    cell.appendChild(pointsLine);
+  }
+
+  if (cleanPenalty) {
+    const penaltyLine = document.createElement("span");
+    penaltyLine.className = "discipline-status";
+    penaltyLine.textContent = `DQ / Status: ${cleanPenalty}`;
+    cell.appendChild(penaltyLine);
+  }
+
+  return cell;
 }
 
 function parseGermanDate(value) {
@@ -1067,6 +1196,15 @@ function getCatalogCompetitionDate() {
 
 function normalizeLiveResultRows(data, event, context) {
   const rows = Array.isArray(data && data.daten) ? data.daten : [];
+  const disciplines = Array.isArray(data && data.disziplinen)
+    ? data.disziplinen
+        .map((discipline) => String(discipline || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (disciplines.length > 1) {
+    return normalizeLiveMultiDisciplineRows(rows, disciplines, event, context);
+  }
 
   return rows.map((row, index) => {
     const rawTime = String(row["zeit 1"] || "").trim();
@@ -1100,6 +1238,94 @@ function normalizeLiveResultRows(data, event, context) {
       status: statusParts.join(" / ")
     };
   });
+}
+
+function normalizeLiveMultiDisciplineRows(rows, disciplines, event, context) {
+  const output = [];
+
+  rows.forEach((row, index) => {
+    const baseResult = {
+      competitionCode: context.competitionCode,
+      competitionName: context.competitionName,
+      competitionDate: context.competitionDate,
+      ageGroup: event.ageGroup,
+      gender: event.gender,
+      name: String(row.name || "")
+        .replace(/\s+\(\d{2,4}\)\s*$/, "")
+        .trim(),
+      club: String(row.gliederung || "").trim()
+    };
+    const totalStatus = formatPointsStatus(row.punkte, row.diff);
+
+    if (totalStatus || row.platz !== undefined) {
+      output.push({
+        ...baseResult,
+        place: row.platz === undefined || row.platz === null
+          ? index + 1
+          : row.platz,
+        discipline: getDisciplineLabel(event),
+        time: "",
+        status: totalStatus
+      });
+    }
+
+    disciplines.forEach((discipline, disciplineIndex) => {
+      const fieldNumber = disciplineIndex + 1;
+      const rawTime = String(row[`zeit ${fieldNumber}`] || "").trim();
+      const points = String(row[`punkte ${fieldNumber}`] || "").trim();
+      const penalty = String(row[`strafe ${fieldNumber}`] || "").trim();
+      const status = formatDisciplineStatus(rawTime, points, penalty);
+
+      if (!rawTime && !points && !penalty) {
+        return;
+      }
+
+      output.push({
+        ...baseResult,
+        place: "",
+        discipline,
+        time: looksLikeTime(rawTime) ? rawTime : "",
+        status
+      });
+    });
+  });
+
+  return output;
+}
+
+function formatPointsStatus(points, diff) {
+  const cleanPoints = String(points || "").trim();
+  const cleanDiff = String(diff || "").trim();
+
+  if (!cleanPoints && !cleanDiff) {
+    return "";
+  }
+
+  return [
+    cleanPoints ? `${cleanPoints} Punkte` : "",
+    cleanDiff ? `Diff. ${cleanDiff}` : ""
+  ].filter(Boolean).join(" / ");
+}
+
+function formatDisciplineStatus(rawTime, points, penalty) {
+  const statusParts = [];
+  const cleanTime = String(rawTime || "").trim();
+  const cleanPoints = String(points || "").trim();
+  const cleanPenalty = String(penalty || "").trim();
+
+  if (cleanPoints) {
+    statusParts.push(`${cleanPoints} Punkte`);
+  }
+
+  if (cleanPenalty) {
+    statusParts.push(`Strafe: ${cleanPenalty}`);
+  }
+
+  if (cleanTime && !looksLikeTime(cleanTime)) {
+    statusParts.push(cleanTime);
+  }
+
+  return statusParts.join(" / ");
 }
 
 function createSelectionRequestItem(event) {
@@ -1171,6 +1397,7 @@ async function loadSelectedResults(selectedEvents, choiceId) {
       competitionDate: getCatalogCompetitionDate()
     };
     const errors = [];
+    const multiDisciplineTables = [];
     const resultGroups = responses.map((result) => {
       const event = eventsByKey.get(result.key);
 
@@ -1186,6 +1413,15 @@ async function loadSelectedResults(selectedEvents, choiceId) {
 
       try {
         if (result.source === "live") {
+          if (isLiveMultiDisciplineData(result.data)) {
+            multiDisciplineTables.push({
+              data: result.data,
+              event,
+              context
+            });
+            return [];
+          }
+
           const rows = normalizeLiveResultRows(result.data, event, context);
 
           if (rows.length === 0) {
@@ -1208,12 +1444,34 @@ async function loadSelectedResults(selectedEvents, choiceId) {
     });
 
     currentResults = resultGroups.flat();
-    renderTable(currentResults);
-    excelButton.disabled = currentResults.length === 0;
+    const hasMultiDisciplineTable = multiDisciplineTables.length > 0;
+
+    if (hasMultiDisciplineTable) {
+      const table = multiDisciplineTables[0];
+      renderLiveMultiDisciplineTable(table.data, table.event, table.context);
+      excelButton.disabled = true;
+
+      if (multiDisciplineTables.length > 1 || currentResults.length > 0) {
+        errors.push(
+          "Diese Auswahl enthÃ¤lt mehrere Tabellenformate. Angezeigt wird die erste Mehrkampf-Tabelle."
+        );
+      }
+    } else {
+      renderTable(currentResults);
+      excelButton.disabled = currentResults.length === 0;
+    }
 
     let statusText =
-      `${selectedEvents.length} Ergebnislisten verarbeitet, ` +
-      `${currentResults.length} Ergebniszeilen geladen`;
+      `${selectedEvents.length} Ergebnislisten verarbeitet, `;
+
+    if (hasMultiDisciplineTable) {
+      const visibleRows = Array.isArray(multiDisciplineTables[0].data.daten)
+        ? multiDisciplineTables[0].data.daten.length
+        : 0;
+      statusText += `${visibleRows} Mehrkampfzeilen angezeigt`;
+    } else {
+      statusText += `${currentResults.length} Ergebniszeilen geladen`;
+    }
 
     if (errors.length > 0) {
       statusText += `, ${errors.length} Ergebnislisten übersprungen`;

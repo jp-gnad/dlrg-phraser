@@ -326,6 +326,15 @@ table {
   white-space: nowrap;
 }
 
+caption {
+  padding: 10px 12px;
+  font-weight: 700;
+  text-align: left;
+  color: #1f2933;
+  background: #f7f9fa;
+  border-bottom: 1px solid #d3d9df;
+}
+
 th,
 td {
   padding: 9px;
@@ -372,6 +381,31 @@ tbody tr:hover {
 .status-cell {
   color: #d00000;
   font-weight: 700;
+}
+
+.multi-discipline-table .multi-discipline-cell {
+  min-width: 150px;
+  vertical-align: top;
+}
+
+.multi-discipline-cell span {
+  display: block;
+  line-height: 1.35;
+}
+
+.multi-discipline-cell .discipline-points {
+  color: #52616f;
+  font-size: 0.86rem;
+}
+
+.multi-discipline-cell .discipline-status {
+  color: #d00000;
+  font-weight: 700;
+}
+
+.multi-discipline-table td:nth-child(2),
+.multi-discipline-table td:nth-child(3) {
+  min-width: 220px;
 }
 
 .empty-cell {

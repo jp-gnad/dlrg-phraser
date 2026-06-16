@@ -1,11 +1,78 @@
 const COMPETITIONS_URL = "https://competition.dlrg.net/de/competitions";
 const LIVE_RESULTS_URL =
   "https://dlrg.net/service.php?doc=apps/liveergebnisse&modus=data";
-const COMPETITIONS_FROM = "2025-01-01";
+const COMPETITIONS_FROM = "2020-01-01";
 const COMPETITIONS_TILL = "2099-12-31";
 const COMPETITION_RESULT_LIMIT = 50;
 const MAX_CONCURRENT_REQUESTS = 4;
 const MAX_SELECTION_ITEMS = 120;
+const KNOWN_LIVE_COMPETITIONS = [
+  {
+    acronym: "MDRM2026",
+    name: "MDRM 2026 Riesa",
+    from: "2026-04-25",
+    till: "2026-04-26"
+  },
+  {
+    acronym: "JEM2024",
+    name: "Junioren-Europameisterschaften 2024",
+    from: "2024-06-29",
+    till: "2024-07-05"
+  }
+];
+const KNOWN_LIVE_RESULT_PAGES = {
+  BMSKA2026: [
+    "https://bez-karlsruhe.dlrg-jugend.de/angebote/srus/live-ergebnisse/"
+  ],
+  BZM2026: [
+    "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/einzel-ergebnisse/",
+    "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/mannschaft-ergebnisse/"
+  ],
+  KVM_NBG2026: [
+    "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
+  ],
+  "KVM-NBG2026": [
+    "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
+  ],
+  LVM_WE_1_2026: [
+    "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
+  ],
+  LVM_POOL_2026_TEIL1_EINZEL: [
+    "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
+  ],
+  LVM_NR2026: [
+    "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-einzel/",
+    "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-mannschaft/"
+  ],
+  JEM2024: [
+    "https://www.dlrg.de/jem2024/ergebnisse/"
+  ],
+  MDRM2026: [
+    "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mdrm-liveergebnisse-einzelwettkaempfe/",
+    "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mannschaftswettkaempfe-liveergebnisse/"
+  ],
+  WM2026: [
+    "https://wuerttemberg.dlrg-jugend.de/liveticker/"
+  ]
+};
+const KNOWN_LIVE_EVENT_TYPES = {
+  "01070005:467": "Individual",
+  "0202001:755": "Individual",
+  "0826000:174": "Individual",
+  "0826000:177": "Team",
+  "1300000:842": "Individual",
+  "1300000:843": "Team",
+  "1600000:549": "Team",
+  "1600000:550": "Individual",
+  "1600000:551": "Team",
+  "1600000:552": "Team",
+  "1600000:553": "Individual",
+  "1600000:554": "Team",
+  "1602001:862": "Individual",
+  "1602001:863": "Team",
+  "14300005:881": "Team",
+  "14300005:882": "Individual"
+};
 
 export default {
   async fetch(request) {
@@ -268,37 +335,69 @@ async function loadSelectedResults(competition, items) {
 }
 
 async function loadCompetitionCatalog(competition) {
+  const knownLiveCompetition = getKnownLiveCompetition(competition);
   const competitionBaseUrl =
     `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
-  const [overviewHtml, competitionHtml] = await Promise.all([
-    fetchTextOrThrow(
+  const [overviewResult, competitionResult] = await Promise.all([
+    fetchTextResult(
       `${competitionBaseUrl}/results`,
       "Ergebnisübersicht"
     ),
-    fetchTextOrThrow(
+    fetchTextResult(
       competitionBaseUrl,
       "Wettkampfseite"
     )
   ]);
-  const details = extractResultDetails(overviewHtml);
+  const details = overviewResult.ok
+    ? extractResultDetailsOrFallback(
+      overviewResult.text,
+      knownLiveCompetition ? knownLiveCompetition.name : competition
+    )
+    : {
+      name: knownLiveCompetition ? knownLiveCompetition.name : competition,
+      from: knownLiveCompetition ? knownLiveCompetition.from : "",
+      till: knownLiveCompetition ? knownLiveCompetition.till : "",
+      events: []
+    };
   const competitionEvents = normalizeCompetitionEvents(details.events || []);
   let events = competitionEvents;
   let source = "competition";
-  let warning = "";
+  const warnings = [];
 
-  const externalResultsUrl = extractExternalResultsUrl(competitionHtml);
+  if (!overviewResult.ok && !knownLiveCompetition) {
+    warnings.push(overviewResult.error);
+  }
+
+  if (!competitionResult.ok && !knownLiveCompetition) {
+    warnings.push(competitionResult.error);
+  }
+
+  const liveResultUrls = getKnownLiveResultPages(competition);
+  const externalResultsUrl = competitionResult.ok
+    ? extractExternalResultsUrl(competitionResult.text)
+    : "";
 
   if (externalResultsUrl) {
+    liveResultUrls.push(externalResultsUrl);
+  }
+
+  if (liveResultUrls.length > 0) {
     try {
-      const liveEvents = await loadLiveCatalog(externalResultsUrl);
+      const liveCatalogs = await mapWithConcurrency(
+        dedupeValues(liveResultUrls),
+        MAX_CONCURRENT_REQUESTS,
+        (url) => loadLiveCatalog(url)
+      );
+      const liveEvents = dedupeCatalogEvents(liveCatalogs.flat());
 
       if (liveEvents.length > 0) {
-        events = liveEvents;
-        source = "live";
+        events = dedupeCatalogEvents([...events, ...liveEvents]);
+        source = competitionEvents.length > 0 ? "mixed" : "live";
       }
     } catch (error) {
-      warning =
-        `Zusätzliche Live-Ergebnisse konnten nicht geladen werden: ${error}`;
+      warnings.push(
+        `Zusätzliche Live-Ergebnisse konnten nicht geladen werden: ${error}`
+      );
     }
   }
 
@@ -308,14 +407,64 @@ async function loadCompetitionCatalog(competition) {
 
   return {
     competition,
-    competitionName: String(details.name || competition),
-    from: normalizeDate(details.from),
-    till: normalizeDate(details.till),
+    competitionName: String(
+      details.name ||
+        (knownLiveCompetition && knownLiveCompetition.name) ||
+        competition
+    ),
+    from: normalizeDate(
+      details.from || (knownLiveCompetition && knownLiveCompetition.from)
+    ),
+    till: normalizeDate(
+      details.till || (knownLiveCompetition && knownLiveCompetition.till)
+    ),
     source,
-    warning,
+    warning: warnings.join(" "),
     count: events.length,
     events: sortCatalogEvents(events)
   };
+}
+
+async function fetchTextResult(targetUrl, label) {
+  try {
+    return {
+      ok: true,
+      text: await fetchTextOrThrow(targetUrl, label)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      text: "",
+      error: `${label}: ${error}`
+    };
+  }
+}
+
+function getKnownLiveResultPages(competition) {
+  return KNOWN_LIVE_RESULT_PAGES[String(competition || "").toUpperCase()]
+    ? [...KNOWN_LIVE_RESULT_PAGES[String(competition || "").toUpperCase()]]
+    : [];
+}
+
+function getKnownLiveCompetition(competition) {
+  const acronym = String(competition || "").toUpperCase();
+  return KNOWN_LIVE_COMPETITIONS.find(
+    (item) => item.acronym.toUpperCase() === acronym
+  );
+}
+
+function dedupeValues(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function dedupeCatalogEvents(events) {
+  const eventsByKey = new Map();
+
+  events.forEach((event) => {
+    eventsByKey.set(event.key, event);
+  });
+
+  return Array.from(eventsByKey.values());
 }
 
 function normalizeCompetitionEvents(events) {
@@ -342,6 +491,17 @@ function normalizeCompetitionEvents(events) {
     .filter((event) => event.discipline);
 }
 
+function extractResultDetailsOrFallback(html, competition) {
+  try {
+    return extractResultDetails(html);
+  } catch {
+    return {
+      name: competition,
+      events: []
+    };
+  }
+}
+
 function normalizeGender(value) {
   const normalized = String(value || "").toLowerCase();
 
@@ -349,7 +509,13 @@ function normalizeGender(value) {
     return "w";
   }
 
-  if (normalized === "male" || normalized === "männlich") {
+  if (
+    normalized === "male" ||
+    normalized === "männlich" ||
+    normalized === "maennlich" ||
+    normalized === "mã¤nnlich" ||
+    normalized.includes("nnlich")
+  ) {
     return "m";
   }
 
@@ -451,6 +617,8 @@ function assertAllowedExternalUrl(value) {
   const allowed =
     hostname === "dlrg.de" ||
     hostname.endsWith(".dlrg.de") ||
+    hostname === "dlrg-jugend.de" ||
+    hostname.endsWith(".dlrg-jugend.de") ||
     hostname === "dlrg.net" ||
     hostname.endsWith(".dlrg.net");
 
@@ -580,7 +748,9 @@ function decodeSingleQuotedString(value) {
 
 function normalizeLiveEvents(reference, data) {
   const sourceName = String(data.wkname || "");
-  const eventType = /individual/i.test(sourceName) ? "Individual" : "Team";
+  const eventType =
+    KNOWN_LIVE_EVENT_TYPES[`${reference.edvnummer}:${reference.wkid}`] ||
+    (/individual|einzel/i.test(sourceName) ? "Individual" : "Team");
   const round = normalizeLiveRound(sourceName);
   const categories = Array.isArray(data.aks) ? data.aks : [];
 
@@ -630,7 +800,9 @@ function normalizeLiveRound(sourceName) {
 }
 
 function parseLiveCategory(ak, eventType, round) {
-  const genderMatch = ak.match(/\s+(female|male|mixed)$/i);
+  const genderMatch = ak.match(
+    /\s+(female|male|mixed|weiblich|männlich|maennlich|m\S?nnlich|gemischt)$/i
+  );
 
   if (!genderMatch) {
     return null;
@@ -643,28 +815,53 @@ function parseLiveCategory(ak, eventType, round) {
     .map((part) => part.trim())
     .filter(Boolean);
 
-  if (parts.length < 2) {
-    return null;
-  }
-
   const ageGroup = parts.shift();
+  const roundFromCategory = parts
+    .map((part) => normalizeLiveCategoryRound(part))
+    .find(Boolean);
   const disciplineParts = parts.filter(
     (part) => !isRoundCategoryPart(part)
   );
-  const discipline = disciplineParts.join(" - ").trim();
-
-  if (!discipline) {
-    return null;
-  }
+  const discipline = disciplineParts.join(" - ").trim() || "Gesamtwertung";
 
   return {
     ak,
     eventType,
-    round,
+    round: roundFromCategory || round,
     ageGroup,
     gender,
     discipline
   };
+}
+
+function normalizeLiveCategoryRound(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const numberMatch = normalized.match(/\d+/);
+  const number = numberMatch ? Number(numberMatch[0]) : 0;
+
+  if (
+    normalized.includes("zwischen") ||
+    normalized.includes("intermediate") ||
+    normalized.includes("semi") ||
+    normalized.includes("quarter")
+  ) {
+    return `Zwischenlauf ${number || 1}`;
+  }
+
+  if (normalized.includes("final")) {
+    return "Finale";
+  }
+
+  if (
+    normalized.includes("vorlauf") ||
+    normalized.includes("heat") ||
+    normalized.includes("prelim") ||
+    normalized.includes("qualif")
+  ) {
+    return "Vorlauf";
+  }
+
+  return "";
 }
 
 function isRoundCategoryPart(value) {
@@ -760,6 +957,12 @@ async function loadAllCompetitions() {
     competitionsByAcronym.set(competition.acronym, competition);
   });
 
+  KNOWN_LIVE_COMPETITIONS.forEach((competition) => {
+    if (!competitionsByAcronym.has(competition.acronym)) {
+      competitionsByAcronym.set(competition.acronym, competition);
+    }
+  });
+
   return Array.from(competitionsByAcronym.values()).sort((left, right) => {
     const dateComparison = left.from.localeCompare(right.from);
     return dateComparison || left.name.localeCompare(right.name, "de");
@@ -771,7 +974,11 @@ function createCompetitionRanges() {
   const horizonYear = currentYear + 5;
   const ranges = [];
 
-  for (let year = 2025; year <= horizonYear; year += 1) {
+  for (
+    let year = Number(COMPETITIONS_FROM.slice(0, 4));
+    year <= horizonYear;
+    year += 1
+  ) {
     ranges.push({
       from: `${year}-01-01`,
       till: `${year}-12-31`
