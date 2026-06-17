@@ -1,2 +1,6 @@
 exported_at,competition_code,competition_name,from,till,source,event_count,row_count,catalog_signature,data_signature,stale_reason,excel_file
 2026-06-17T10:18:19.343Z,BMSKA2026,Bezirksmeisterschaften Karlsruhe,2026-03-14,2026-03-15,mixed,62,398,fbcf9ade,3cbe44dd,,2026-03-14_BMSKA2026_Bezirksmeisterschaften_Karlsruhe.xls
+2026-06-17T10:42:55.620Z,DEM2022,Deutsche Einzelstrecken-Meisterschaften 2022,2022-03-26,2022-03-27,live,42,850,6ffed9a4,a09d4e7b,,2022-03-26_DEM2022_Deutsche_Einzelstrecken-Meisterschaften_2022.xls
+2026-06-17T10:43:43.545Z,DMM2022,DMM 2022,2022-10-21,2022-10-22,live,20,555,66257519,89fe7d6a,,2022-10-21_DMM2022_DMM_2022.xls
+2026-06-17T10:43:57.582Z,DP2022,DP 2022,2022-11-19,2022-11-19,live,23,1146,cb1defc9,a4548f11,,2022-11-19_DP2022_DP_2022.xls
+2026-06-17T10:43:17.509Z,JRP2022,18. Junioren-Rettungspokal 2022,2022-06-18,2022-06-20,live,67,1691,040b13c0,6f41bbde,,2022-06-18_JRP2022_18._Junioren-Rettungspokal_2022.xls
