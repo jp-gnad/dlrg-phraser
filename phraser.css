@@ -139,10 +139,7 @@ h2 {
 }
 
 .controls {
-  display: grid;
-  grid-template-columns: minmax(320px, 620px) auto;
-  gap: 12px;
-  align-items: start;
+  max-width: 720px;
   margin-bottom: 16px;
 }
 
@@ -172,15 +169,6 @@ h2 {
 .competition-control select:disabled {
   color: #66717b;
   background: #eef1f4;
-}
-
-.excel-button {
-  margin-top: 24px;
-  background: #217346;
-}
-
-.excel-button:hover:not(:disabled) {
-  background: #185735;
 }
 
 .result-selection {
@@ -476,16 +464,8 @@ pre {
 }
 
 @media (max-width: 900px) {
-  .controls {
-    grid-template-columns: 1fr;
-  }
-
   .controls button {
     width: 100%;
-  }
-
-  .excel-button {
-    margin-top: 0;
   }
 }
 

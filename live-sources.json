@@ -23,6 +23,30 @@
       "name": "Bayerische Mehrkampf-Meisterschaften im Rettungsschwimmen 2025",
       "from": "2025-07-06",
       "till": "2025-07-06"
+    },
+    {
+      "acronym": "TROPHY1_2024",
+      "name": "1. DLRG Trophy 2024 Haltern am See",
+      "from": "2024-06-15",
+      "till": "2024-06-15"
+    },
+    {
+      "acronym": "TROPHY2_2024",
+      "name": "2. DLRG Trophy 2024 Bitterfeld-Wolfen",
+      "from": "2024-08-03",
+      "till": "2024-08-03"
+    },
+    {
+      "acronym": "TROPHY3_2024",
+      "name": "3. DLRG Trophy 2024 Neuenkirchen",
+      "from": "2024-09-14",
+      "till": "2024-09-14"
+    },
+    {
+      "acronym": "JRP2023",
+      "name": "19. Junioren-Rettungspokal 2023 Braunschweig",
+      "from": "2023-06-24",
+      "till": "2023-06-27"
     }
   ],
   "resultPages": {
@@ -58,12 +82,24 @@
     "JEM2024": [
       "https://www.dlrg.de/jem2024/ergebnisse/"
     ],
+    "JRP2023": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/19-junioren-rettungspokal/jrp-2023-ergebnisse/"
+    ],
     "MDRM2026": [
       "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mdrm-liveergebnisse-einzelwettkaempfe/",
       "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mannschaftswettkaempfe-liveergebnisse/"
     ],
     "NI-LM2026": [
       "https://niedersachsen.dlrg-jugend.de/veranstaltungen/landes/landesmeisterschaften/lm2026-einzel-live-ergebnisse/"
+    ],
+    "TROPHY1_2024": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/dlrg-trophy-2024/haltern-am-see/"
+    ],
+    "TROPHY2_2024": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/dlrg-trophy-2024/bitterfeld-wolfen/"
+    ],
+    "TROPHY3_2024": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/dlrg-trophy-2024/neuenkirchen/"
     ],
     "WM2026": [
       "https://wuerttemberg.dlrg-jugend.de/liveticker/"
@@ -86,6 +122,18 @@
     "0861000:828": "Individual",
     "0906000:846": "Individual",
     "0906000:847": "Team",
+    "1600000:537": "Individual",
+    "1600000:538": "Team",
+    "1600000:539": "Individual",
+    "1600000:540": "Individual",
+    "1600000:541": "Team",
+    "1600000:542": "Team",
+    "1600000:356": "Individual",
+    "1600000:357": "Team",
+    "1600000:358": "Team",
+    "1600000:359": "Individual",
+    "1600000:360": "Team",
+    "1600000:361": "Team",
     "1602001:862": "Individual",
     "1602001:863": "Team",
     "14300005:881": "Team",

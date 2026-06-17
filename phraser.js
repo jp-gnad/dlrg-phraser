@@ -25,7 +25,6 @@ const manualCompetitionGroup = document.getElementById(
   "manualCompetitionGroup"
 );
 const competitionInput = document.getElementById("competition");
-const excelButton = document.getElementById("excelButton");
 const resultSelection = document.getElementById("resultSelection");
 const selectionInfo = document.getElementById("selectionInfo");
 const resultTabs = document.getElementById("resultTabs");
@@ -235,7 +234,6 @@ function resetResultSelection() {
   resultSelection.hidden = true;
   resultCatalog.replaceChildren();
   resultTable.replaceChildren();
-  excelButton.disabled = true;
   selectionInfo.textContent = "";
   errorDetails.hidden = true;
   errorOutput.textContent = "";
@@ -428,7 +426,6 @@ function setActiveEventType(eventType) {
   if (eventTypeChanged) {
     currentResults = [];
     resultTable.replaceChildren();
-    excelButton.disabled = true;
     errorDetails.hidden = true;
     errorOutput.textContent = "";
   }
@@ -1000,184 +997,6 @@ function createLiveDisciplineCell(rawTime, points, penalty) {
   return cell;
 }
 
-function parseGermanDate(value) {
-  const match = String(value || "").match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-
-  if (!match) {
-    return null;
-  }
-
-  return new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
-}
-
-function createSafeFileNamePart(value) {
-  return String(value || "")
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .substring(0, 80);
-}
-
-async function exportToExcel() {
-  if (!Array.isArray(currentResults) || currentResults.length === 0) {
-    statusElement.className = "status error";
-    statusElement.textContent = "Es sind keine Ergebnisse für den Excel-Export vorhanden.";
-    return;
-  }
-
-  if (typeof ExcelJS === "undefined") {
-    statusElement.className = "status error";
-    statusElement.textContent =
-      "ExcelJS konnte nicht geladen werden. Bitte die Internetverbindung prüfen.";
-    return;
-  }
-
-  excelButton.disabled = true;
-  statusElement.className = "status";
-  statusElement.textContent = "Excel-Arbeitsmappe wird erstellt ...";
-
-  try {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = "DLRG Ergebnis-Export";
-    workbook.lastModifiedBy = "DLRG Ergebnis-Export";
-    workbook.created = new Date();
-    workbook.modified = new Date();
-
-    const worksheet = workbook.addWorksheet("Ergebnisse", {
-      views: [{ state: "frozen", ySplit: 1 }]
-    });
-
-    const excelRows = currentResults.map((result) => [
-      Number(result.place) || "",
-      result.competitionName || "",
-      parseGermanDate(result.competitionDate),
-      result.ageGroup || "",
-      result.gender || "",
-      result.discipline || "",
-      result.name || "",
-      result.club || "",
-      result.time || "",
-      result.status || ""
-    ]);
-
-    worksheet.addTable({
-      name: "DLRGErgebnisse",
-      ref: "A1",
-      headerRow: true,
-      totalsRow: false,
-      style: {
-        theme: "TableStyleMedium2",
-        showFirstColumn: false,
-        showLastColumn: false,
-        showRowStripes: true,
-        showColumnStripes: false
-      },
-      columns: [
-        { name: "Platz", filterButton: true },
-        { name: "Wettkampf", filterButton: true },
-        { name: "Datum", filterButton: true },
-        { name: "AK", filterButton: true },
-        { name: "Gender", filterButton: true },
-        { name: "Disziplin", filterButton: true },
-        { name: "Name", filterButton: true },
-        { name: "Verein", filterButton: true },
-        { name: "Zeit", filterButton: true },
-        { name: "DQ / Status", filterButton: true }
-      ],
-      rows: excelRows
-    });
-
-    [9, 48, 13, 13, 11, 36, 32, 34, 13, 18].forEach((width, index) => {
-      worksheet.getColumn(index + 1).width = width;
-    });
-
-    worksheet.eachRow((row, rowNumber) => {
-      row.alignment = { vertical: "middle" };
-
-      if (rowNumber > 1) {
-        row.height = 20;
-      }
-    });
-
-    [2, 6, 7, 8, 10].forEach((columnNumber) => {
-      worksheet.getColumn(columnNumber).alignment = {
-        vertical: "middle",
-        wrapText: true
-      };
-    });
-
-    for (let rowNumber = 2; rowNumber <= excelRows.length + 1; rowNumber += 1) {
-      worksheet.getCell(rowNumber, 1).numFmt = "0";
-      const dateCell = worksheet.getCell(rowNumber, 3);
-
-      if (dateCell.value instanceof Date) {
-        dateCell.numFmt = "dd.mm.yyyy";
-      }
-
-      worksheet.getCell(rowNumber, 9).numFmt = "@";
-      const statusCell = worksheet.getCell(rowNumber, 10);
-
-      if (String(statusCell.value || "").trim()) {
-        statusCell.font = { bold: true, color: { argb: "FFC00000" } };
-      }
-    }
-
-    const firstResult = currentResults[0];
-    const infoSheet = workbook.addWorksheet("Informationen");
-    infoSheet.addRows([
-      ["Eigenschaft", "Wert"],
-      ["Wettkampfcode", firstResult.competitionCode || ""],
-      ["Wettkampf", firstResult.competitionName || ""],
-      ["Wettkampfdatum", parseGermanDate(firstResult.competitionDate)],
-      ["Exportdatum", new Date()],
-      ["Anzahl Ergebniszeilen", currentResults.length]
-    ]);
-    infoSheet.getColumn(1).width = 25;
-    infoSheet.getColumn(2).width = 60;
-    infoSheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    infoSheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF0068AD" }
-    };
-    infoSheet.getCell("B4").numFmt = "dd.mm.yyyy";
-    infoSheet.getCell("B5").numFmt = "dd.mm.yyyy hh:mm";
-    infoSheet.views = [{ state: "frozen", ySplit: 1 }];
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    });
-    const competitionCode =
-      createSafeFileNamePart(getSelectedCompetitionCode()) || "Wettkampf";
-    const datePart = String(firstResult.competitionDate || "")
-      .split(".")
-      .reverse()
-      .join("-");
-    const fileName = `DLRG_${competitionCode}_Ergebnisse${
-      datePart ? `_${datePart}` : ""
-    }.xlsx`;
-    const downloadUrl = URL.createObjectURL(blob);
-    const downloadLink = document.createElement("a");
-    downloadLink.href = downloadUrl;
-    downloadLink.download = fileName;
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    downloadLink.remove();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
-
-    statusElement.textContent =
-      `${currentResults.length} Ergebniszeilen wurden als Excel-Datei gespeichert.`;
-  } catch (error) {
-    console.error(error);
-    statusElement.className = "status error";
-    statusElement.textContent = `Fehler beim Excel-Export: ${error.message}`;
-  } finally {
-    excelButton.disabled = currentResults.length === 0;
-  }
-}
-
 function getDisciplineLabel(event) {
   if (event.round && event.round !== "Ergebnis") {
     return `${event.discipline} - ${event.round}`;
@@ -1365,7 +1184,6 @@ async function loadSelectedResults(selectedEvents, choiceId) {
   competitionSelect.disabled = true;
   competitionInput.disabled = true;
   setCatalogButtonsDisabled(true);
-  excelButton.disabled = true;
   currentResults = [];
   resultTable.replaceChildren();
   errorDetails.hidden = true;
@@ -1449,7 +1267,6 @@ async function loadSelectedResults(selectedEvents, choiceId) {
     if (hasMultiDisciplineTable) {
       const table = multiDisciplineTables[0];
       renderLiveMultiDisciplineTable(table.data, table.event, table.context);
-      excelButton.disabled = true;
 
       if (multiDisciplineTables.length > 1 || currentResults.length > 0) {
         errors.push(
@@ -1458,7 +1275,6 @@ async function loadSelectedResults(selectedEvents, choiceId) {
       }
     } else {
       renderTable(currentResults);
-      excelButton.disabled = currentResults.length === 0;
     }
 
     let statusText =
@@ -1483,7 +1299,6 @@ async function loadSelectedResults(selectedEvents, choiceId) {
   } catch (error) {
     console.error(error);
     currentResults = [];
-    excelButton.disabled = true;
     statusElement.className = "status error";
     statusElement.textContent = `Fehler: ${error.message}`;
   } finally {
@@ -1508,7 +1323,6 @@ loginForm.addEventListener("submit", (event) => {
 });
 
 logoutButton.addEventListener("click", lockApp);
-excelButton.addEventListener("click", exportToExcel);
 competitionSelect.addEventListener("change", () => {
   setCompetitionControlsEnabled();
 
