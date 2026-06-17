@@ -25,6 +25,12 @@
       "till": "2025-07-06"
     },
     {
+      "acronym": "BWSEN2025",
+      "name": "Baden-Württembergische Seniorenmeisterschaften 2025",
+      "from": "2025-10-18",
+      "till": "2025-10-18"
+    },
+    {
       "acronym": "TROPHY1_2024",
       "name": "1. DLRG Trophy 2024 Haltern am See",
       "from": "2024-06-15",
@@ -161,6 +167,9 @@
     "BZM_REK2026": [
       "https://erftkreis.dlrg.de/mitmachen/rettungssport/bezirksmeisterschaften-live-ergebnisse/"
     ],
+    "BWSEN2025": [
+      "https://baden.dlrg.de/masters2025/"
+    ],
     "BZM_BI2026": [
       "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
     ],
@@ -256,6 +265,10 @@
     "BZM_BI2024": [
       "1326000:445"
     ],
+    "BWSEN2025": [
+      "0100000:730",
+      "0100000:731"
+    ],
     "DEM2022": [
       "1600000:144",
       "1600000:147",
@@ -292,6 +305,8 @@
     ]
   },
   "eventTypes": {
+    "0100000:730": "Individual",
+    "0100000:731": "Team",
     "01070005:467": "Individual",
     "0202001:755": "Individual",
     "0826000:174": "Individual",
