@@ -59,6 +59,60 @@
       "name": "Deutsche Senioren-Meisterschaften 2026",
       "from": "2026-05-01",
       "till": "2026-05-02"
+    },
+    {
+      "acronym": "BZM_BI2026",
+      "name": "Bezirksmeisterschaften Einzel Bielefeld 2026",
+      "from": "2026-02-21",
+      "till": "2026-02-21"
+    },
+    {
+      "acronym": "OWLCUP2026",
+      "name": "6. OWL-Cup 2026",
+      "from": "2026-03-07",
+      "till": "2026-03-07"
+    },
+    {
+      "acronym": "BZM_BI2025",
+      "name": "Bezirksmeisterschaften Einzel Bielefeld 2025",
+      "from": "2025-03-16",
+      "till": "2025-03-16"
+    },
+    {
+      "acronym": "OWLCUP2025",
+      "name": "5. OWL-Cup 2025",
+      "from": "2025-03-15",
+      "till": "2025-03-15"
+    },
+    {
+      "acronym": "BZM_BI2024",
+      "name": "Bezirksmeisterschaften Einzel Bielefeld 2024",
+      "from": "2024-01-01",
+      "till": "2024-12-31"
+    },
+    {
+      "acronym": "OWLCUP2024",
+      "name": "4. OWL-Cup 2024",
+      "from": "2024-01-01",
+      "till": "2024-12-31"
+    },
+    {
+      "acronym": "FWM_NRW2024",
+      "name": "Freiwasser Meisterschaften Nordrhein und Westfalen 2024 - Mannschaft",
+      "from": "2024-09-08",
+      "till": "2024-09-08"
+    },
+    {
+      "acronym": "NIENBURG_SPEED2026",
+      "name": "5. Nienburger Speedlifesaving Event",
+      "from": "2026-06-13",
+      "till": "2026-06-13"
+    },
+    {
+      "acronym": "LSM_NR2024",
+      "name": "Landesseniorenmeisterschaften Pool Nordrhein 2024 - Einzel",
+      "from": "2024-11-23",
+      "till": "2024-11-23"
     }
   ],
   "resultPages": {
@@ -71,6 +125,15 @@
     "BZM_REK2026": [
       "https://erftkreis.dlrg.de/mitmachen/rettungssport/bezirksmeisterschaften-live-ergebnisse/"
     ],
+    "BZM_BI2026": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
+    "BZM_BI2025": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
+    "BZM_BI2024": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
     "BZM2026": [
       "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/einzel-ergebnisse/",
       "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/mannschaft-ergebnisse/"
@@ -80,6 +143,9 @@
     ],
     "DSM2026": [
       "https://schwerte.dlrg.de/dsm/ergebnisse"
+    ],
+    "FWM_NRW2024": [
+      "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-freiwasser-meisterschaft-der-dlrg-nordrhein-und-westfalen-2024-mannschaft-1/"
     ],
     "KVM_NBG2026": [
       "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
@@ -97,6 +163,9 @@
       "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-einzel/",
       "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesmeisterschaften-pool-2026-mannschaft/"
     ],
+    "LSM_NR2024": [
+      "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-landesseniorenmeisterschaften-pool-2024-einzel/"
+    ],
     "JEM2024": [
       "https://www.dlrg.de/jem2024/ergebnisse/"
     ],
@@ -110,6 +179,18 @@
     "NI-LM2026": [
       "https://niedersachsen.dlrg-jugend.de/veranstaltungen/landes/landesmeisterschaften/lm2026-einzel-live-ergebnisse/"
     ],
+    "NIENBURG_SPEED2026": [
+      "https://nienburg.dlrg.de/mitmachen/rettungssport/wettkampf-live/"
+    ],
+    "OWLCUP2026": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
+    "OWLCUP2025": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
+    "OWLCUP2024": [
+      "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
+    ],
     "TROPHY1_2024": [
       "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/dlrg-trophy-2024/haltern-am-see/"
     ],
@@ -121,6 +202,26 @@
     ],
     "WM2026": [
       "https://wuerttemberg.dlrg-jugend.de/liveticker/"
+    ]
+  },
+  "references": {
+    "BZM_BI2026": [
+      "1326000:812"
+    ],
+    "OWLCUP2026": [
+      "1326000:813"
+    ],
+    "BZM_BI2025": [
+      "1326000:633"
+    ],
+    "OWLCUP2025": [
+      "1326000:634"
+    ],
+    "BZM_BI2024": [
+      "1326000:445"
+    ],
+    "OWLCUP2024": [
+      "1326000:446"
     ]
   },
   "eventTypes": {
@@ -159,6 +260,15 @@
     "1600000:491": "Team",
     "1313012:859": "Individual",
     "1313012:860": "Team",
+    "1326000:812": "Individual",
+    "1326000:813": "Individual",
+    "1326000:633": "Individual",
+    "1326000:634": "Individual",
+    "1326000:445": "Individual",
+    "1326000:446": "Individual",
+    "0900000:569": "Team",
+    "0832003:890": "Individual",
+    "0900000:592": "Individual",
     "1602001:862": "Individual",
     "1602001:863": "Team",
     "14300005:881": "Team",

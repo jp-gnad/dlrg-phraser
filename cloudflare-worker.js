@@ -324,6 +324,10 @@ async function loadCompetitionCatalog(competition) {
     warnings.push(liveSourceConfig.warning);
   }
 
+  const liveReferenceFilter = getKnownLiveReferences(
+    liveSourceConfig,
+    competition
+  );
   const liveResultUrls = getKnownLiveResultPages(
     liveSourceConfig,
     competition
@@ -341,7 +345,7 @@ async function loadCompetitionCatalog(competition) {
       const liveCatalogs = await mapWithConcurrency(
         dedupeValues(liveResultUrls),
         MAX_CONCURRENT_REQUESTS,
-        (url) => loadLiveCatalog(url, liveSourceConfig)
+        (url) => loadLiveCatalog(url, liveSourceConfig, liveReferenceFilter)
       );
       const liveEvents = dedupeCatalogEvents(liveCatalogs.flat());
 
@@ -448,6 +452,7 @@ function createEmptyLiveSourceConfig() {
   return {
     competitions: [],
     resultPages: {},
+    references: {},
     eventTypes: {},
     warning: ""
   };
@@ -493,6 +498,20 @@ function normalizeLiveSourceConfig(config) {
     });
   }
 
+  if (config && config.references && typeof config.references === "object") {
+    Object.entries(config.references).forEach(([code, references]) => {
+      const acronym = String(code || "").trim().toUpperCase();
+
+      if (!acronym || !Array.isArray(references)) {
+        return;
+      }
+
+      output.references[acronym] = references
+        .map((reference) => String(reference || "").trim())
+        .filter((reference) => /^\d{1,12}:\d{1,12}$/.test(reference));
+    });
+  }
+
   return output;
 }
 
@@ -508,6 +527,11 @@ function getKnownLiveCompetition(liveSourceConfig, competition) {
   return liveSourceConfig.competitions.find(
     (item) => item.acronym.toUpperCase() === acronym
   );
+}
+
+function getKnownLiveReferences(liveSourceConfig, competition) {
+  const acronym = String(competition || "").toUpperCase();
+  return new Set(liveSourceConfig.references[acronym] || []);
 }
 
 function dedupeValues(values) {
@@ -644,13 +668,23 @@ function sortCatalogEvents(events) {
   });
 }
 
-async function loadLiveCatalog(externalResultsUrl, liveSourceConfig) {
+async function loadLiveCatalog(
+  externalResultsUrl,
+  liveSourceConfig,
+  referenceFilter = new Set()
+) {
   assertAllowedExternalUrl(externalResultsUrl);
   const externalHtml = await fetchTextOrThrow(
     externalResultsUrl,
     "Externe Ergebnisseite"
   );
-  const references = extractLiveReferences(externalHtml);
+  let references = extractLiveReferences(externalHtml);
+
+  if (referenceFilter.size > 0) {
+    references = references.filter((reference) =>
+      referenceFilter.has(`${reference.edvnummer}:${reference.wkid}`)
+    );
+  }
 
   if (references.length === 0) {
     return [];
@@ -873,8 +907,11 @@ function parseLiveCategory(ak, eventType, round) {
     .filter(Boolean);
 
   const firstPart = parts.shift() || "";
-  const categoryEventType = getLiveCategoryEventType(firstPart) || eventType;
   const ageGroup = stripLiveCategoryEventType(firstPart);
+  const categoryEventType =
+    getLiveCategoryEventType(firstPart) ||
+    getLiveAgeGroupEventType(ageGroup, eventType) ||
+    eventType;
   const roundFromCategory = parts
     .map((part) => normalizeLiveCategoryRound(part))
     .find(Boolean);
@@ -912,6 +949,20 @@ function stripLiveCategoryEventType(value) {
     .trim()
     .replace(/^(?:einzel|individual|mannschaft|team|relay|staffel)\s+/i, "")
     .trim();
+}
+
+function getLiveAgeGroupEventType(ageGroup, defaultEventType) {
+  if (defaultEventType !== "Individual") {
+    return "";
+  }
+
+  const match = String(ageGroup || "").match(/^AK\s+(\d{3,})\+?/i);
+
+  if (match) {
+    return "Team";
+  }
+
+  return "";
 }
 
 function normalizeLiveCategoryRound(value) {
