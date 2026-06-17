@@ -1998,6 +1998,7 @@ function createSelectionRequestItem(event) {
     return {
       key: event.key,
       source: event.source,
+      competition: event.competition,
       uuid: event.uuid
     };
   }

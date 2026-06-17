@@ -37,12 +37,6 @@
       "till": "2026-06-21"
     },
     {
-      "acronym": "BZM_LBHN2026",
-      "name": "Bezirksmeisterschaft Ludwigsburg und Heilbronn 2026",
-      "from": "2026-03-01",
-      "till": "2026-03-01"
-    },
-    {
       "acronym": "BMSKA2026",
       "name": "Bezirksmeisterschaften Bez. Karlsruhe 2026",
       "from": "2026-03-15",
@@ -77,12 +71,6 @@
       "name": "Landesmeisterschaften Pool Westfalen 2026 - Teil I",
       "from": "2026-04-18",
       "till": "2026-04-19"
-    },
-    {
-      "acronym": "LVM_POOL_2026_TEIL1_EINZEL",
-      "name": "Landesmeisterschaften Pool Westfalen 2026 - Teil I Einzel",
-      "from": "2026-04-18",
-      "till": "2026-04-18"
     },
     {
       "acronym": "LVM_NR2026",
@@ -241,6 +229,11 @@
       "till": "2024-11-23"
     }
   ],
+  "aliases": {
+    "BZM_LBHN2026": "BMLBHN2026",
+    "KVM-NBG2026": "KVM_NBG2026",
+    "LVM_POOL_2026_TEIL1_EINZEL": "LVM_WE_1_2026"
+  },
   "resultPages": {
     "BMM2025": [
       "https://bayern.dlrg-jugend.de/veranstaltungen/bmm/live/"
@@ -255,6 +248,10 @@
       "https://baden.dlrg.de/masters2025/"
     ],
     "BZM_LBHN2026": [
+      "https://bietigheim-bissingen.dlrg.de/mitmachen/live-1/",
+      "https://bietigheim-bissingen.dlrg.de/mitmachen/rettungssport/live-2/"
+    ],
+    "BMLBHN2026": [
       "https://bietigheim-bissingen.dlrg.de/mitmachen/live-1/",
       "https://bietigheim-bissingen.dlrg.de/mitmachen/rettungssport/live-2/"
     ],
@@ -361,6 +358,10 @@
       "0100000:731"
     ],
     "BZM_LBHN2026": [
+      "1404003:820",
+      "1404003:821"
+    ],
+    "BMLBHN2026": [
       "1404003:820",
       "1404003:821"
     ],

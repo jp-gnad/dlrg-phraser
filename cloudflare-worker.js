@@ -197,7 +197,7 @@ async function readJsonBody(request) {
   }
 }
 
-function validateSelectionItems(items) {
+function validateSelectionItems(items, competition) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Es wurden keine Ergebnislisten ausgewählt.");
   }
@@ -215,14 +215,22 @@ function validateSelectionItems(items) {
 
     if (item.source === "competition") {
       const uuid = String(item.uuid || "").toLowerCase();
+      const itemCompetition = String(
+        item.competition || competition || ""
+      ).trim();
 
       if (!/^[0-9a-f-]{36}$/.test(uuid)) {
         throw new Error("Eine Ergebnis-UUID ist ungültig.");
       }
 
+      if (!itemCompetition) {
+        throw new Error("Ein Wettkampfcode fehlt.");
+      }
+
       return {
         key: String(item.key || `competition:${uuid}`),
         source: "competition",
+        competition: itemCompetition,
         uuid
       };
     }
@@ -254,15 +262,14 @@ function validateSelectionItems(items) {
 }
 
 async function loadSelectedResults(competition, items) {
-  const competitionBaseUrl =
-    `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
-
   return mapWithConcurrency(
     items,
     MAX_CONCURRENT_REQUESTS,
     async (item) => {
       try {
         if (item.source === "competition") {
+          const competitionBaseUrl =
+            `${COMPETITIONS_URL}/${encodeURIComponent(item.competition || competition)}`;
           const html = await fetchTextOrThrow(
             `${competitionBaseUrl}/results/${encodeURIComponent(item.uuid)}`,
             `Ergebnisliste ${item.uuid}`
@@ -378,7 +385,44 @@ async function loadCompetitionCatalog(competition) {
       till: knownLiveCompetition ? knownLiveCompetition.till : "",
       events: []
     };
-  const competitionEvents = normalizeCompetitionEvents(details.events || []);
+  let competitionEvents = normalizeCompetitionEvents(details.events || [], competition);
+  const canonicalCompetition = resolveCompetitionAlias(liveSourceConfig, competition);
+  const aliasCompetitionCodes = Object.entries(liveSourceConfig.aliases)
+    .filter(([, target]) =>
+      resolveCompetitionAlias(liveSourceConfig, target) === canonicalCompetition
+    )
+    .map(([alias]) => alias)
+    .filter((alias) => alias !== String(competition || "").toUpperCase());
+
+  if (aliasCompetitionCodes.length > 0) {
+    const aliasEventGroups = await mapWithConcurrency(
+      aliasCompetitionCodes,
+      MAX_CONCURRENT_REQUESTS,
+      async (alias) => {
+        const aliasBaseUrl =
+          `${COMPETITIONS_URL}/${encodeURIComponent(alias)}`;
+        const aliasOverviewResult = await fetchTextResult(
+          `${aliasBaseUrl}/results`,
+          "Alias-Ergebnisübersicht"
+        );
+
+        if (!aliasOverviewResult.ok) {
+          return [];
+        }
+
+        const aliasDetails = extractResultDetailsOrFallback(
+          aliasOverviewResult.text,
+          knownLiveCompetition ? knownLiveCompetition.name : alias
+        );
+
+        return normalizeCompetitionEvents(aliasDetails.events || [], alias);
+      }
+    );
+    competitionEvents = dedupeCatalogEvents([
+      ...competitionEvents,
+      ...aliasEventGroups.flat()
+    ]);
+  }
   let events = competitionEvents;
   let source = "competition";
   const warnings = [];
@@ -555,6 +599,7 @@ async function loadLiveSourceConfig() {
 function createEmptyLiveSourceConfig() {
   return {
     competitions: [],
+    aliases: {},
     resultPages: {},
     references: {},
     eventTypes: {},
@@ -602,6 +647,17 @@ function normalizeLiveSourceConfig(config) {
     });
   }
 
+  if (config && config.aliases && typeof config.aliases === "object") {
+    Object.entries(config.aliases).forEach(([alias, canonical]) => {
+      const cleanAlias = String(alias || "").trim().toUpperCase();
+      const cleanCanonical = String(canonical || "").trim().toUpperCase();
+
+      if (cleanAlias && cleanCanonical && cleanAlias !== cleanCanonical) {
+        output.aliases[cleanAlias] = cleanCanonical;
+      }
+    });
+  }
+
   if (config && config.references && typeof config.references === "object") {
     Object.entries(config.references).forEach(([code, references]) => {
       const acronym = String(code || "").trim().toUpperCase();
@@ -626,15 +682,45 @@ function getKnownLiveResultPages(liveSourceConfig, competition) {
     : [];
 }
 
+function resolveCompetitionAlias(liveSourceConfig, competition) {
+  let acronym = String(competition || "").trim().toUpperCase();
+  const seen = new Set();
+
+  while (liveSourceConfig.aliases[acronym] && !seen.has(acronym)) {
+    seen.add(acronym);
+    acronym = liveSourceConfig.aliases[acronym];
+  }
+
+  return acronym;
+}
+
+function isCompetitionAlias(liveSourceConfig, competition) {
+  const acronym = String(competition || "").trim().toUpperCase();
+  return Boolean(liveSourceConfig.aliases[acronym]);
+}
+
+function getCompetitionLookupCodes(liveSourceConfig, competition) {
+  const canonical = resolveCompetitionAlias(liveSourceConfig, competition);
+  const codes = [canonical];
+
+  Object.entries(liveSourceConfig.aliases).forEach(([alias, target]) => {
+    if (resolveCompetitionAlias(liveSourceConfig, target) === canonical) {
+      codes.push(alias);
+    }
+  });
+
+  return dedupeValues(codes);
+}
+
 function getKnownLiveCompetition(liveSourceConfig, competition) {
-  const acronym = String(competition || "").toUpperCase();
+  const acronym = resolveCompetitionAlias(liveSourceConfig, competition);
   return liveSourceConfig.competitions.find(
     (item) => item.acronym.toUpperCase() === acronym
   );
 }
 
 function getKnownLiveReferences(liveSourceConfig, competition) {
-  const acronym = String(competition || "").toUpperCase();
+  const acronym = resolveCompetitionAlias(liveSourceConfig, competition);
   return new Set(liveSourceConfig.references[acronym] || []);
 }
 
@@ -652,15 +738,17 @@ function dedupeCatalogEvents(events) {
   return Array.from(eventsByKey.values());
 }
 
-function normalizeCompetitionEvents(events) {
+function normalizeCompetitionEvents(events, competitionCode) {
   return events
     .filter((event) => event && event.id)
     .map((event) => {
       const uuid = String(event.id).toLowerCase();
+      const cleanCompetitionCode = String(competitionCode || "").trim();
 
       return {
-        key: `competition:${uuid}`,
+        key: `competition:${cleanCompetitionCode}:${uuid}`,
         source: "competition",
+        competition: cleanCompetitionCode,
         uuid,
         eventType:
           String(event.eventType || "").toLowerCase() === "individual"
@@ -1222,6 +1310,10 @@ async function loadAllCompetitions() {
   const competitionsByAcronym = new Map();
 
   competitionGroups.flat().forEach((competition) => {
+    if (isCompetitionAlias(liveSourceConfig, competition.acronym)) {
+      return;
+    }
+
     competitionsByAcronym.set(competition.acronym, competition);
   });
 
