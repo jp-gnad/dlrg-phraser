@@ -53,6 +53,12 @@
       "name": "Deutsche Einzelstrecken-Meisterschaften 2024",
       "from": "2024-04-24",
       "till": "2024-04-24"
+    },
+    {
+      "acronym": "DSM2026",
+      "name": "Deutsche Senioren-Meisterschaften 2026",
+      "from": "2026-05-01",
+      "till": "2026-05-02"
     }
   ],
   "resultPages": {
@@ -71,6 +77,9 @@
     ],
     "DEM2024": [
       "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/deutsche-einzelstrecken-meisterschaften-2024/ergebnisse/"
+    ],
+    "DSM2026": [
+      "https://schwerte.dlrg.de/dsm/ergebnisse"
     ],
     "KVM_NBG2026": [
       "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
@@ -148,6 +157,8 @@
     "1600000:489": "Team",
     "1600000:490": "Team",
     "1600000:491": "Team",
+    "1313012:859": "Individual",
+    "1313012:860": "Team",
     "1602001:862": "Individual",
     "1602001:863": "Team",
     "14300005:881": "Team",
