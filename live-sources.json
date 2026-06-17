@@ -47,6 +47,12 @@
       "name": "19. Junioren-Rettungspokal 2023 Braunschweig",
       "from": "2023-06-24",
       "till": "2023-06-27"
+    },
+    {
+      "acronym": "DEM2024",
+      "name": "Deutsche Einzelstrecken-Meisterschaften 2024",
+      "from": "2024-04-24",
+      "till": "2024-04-24"
     }
   ],
   "resultPages": {
@@ -62,6 +68,9 @@
     "BZM2026": [
       "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/einzel-ergebnisse/",
       "https://bez-goettingen.dlrg.de/mitmachen/live-ergebnisse/mannschaft-ergebnisse/"
+    ],
+    "DEM2024": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/deutsche-einzelstrecken-meisterschaften-2024/ergebnisse/"
     ],
     "KVM_NBG2026": [
       "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
@@ -134,6 +143,11 @@
     "1600000:359": "Individual",
     "1600000:360": "Team",
     "1600000:361": "Team",
+    "1600000:483": "Individual",
+    "1600000:488": "Individual",
+    "1600000:489": "Team",
+    "1600000:490": "Team",
+    "1600000:491": "Team",
     "1602001:862": "Individual",
     "1602001:863": "Team",
     "14300005:881": "Team",
