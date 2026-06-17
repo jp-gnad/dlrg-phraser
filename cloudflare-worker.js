@@ -53,6 +53,24 @@ export default {
         );
       }
 
+      if (mode === "live-direct") {
+        if (request.method !== "GET") {
+          return methodNotAllowed(corsHeaders);
+        }
+
+        const edvnummer = requestUrl.searchParams.get("edvnummer");
+        const wkid = requestUrl.searchParams.get("wkid");
+        const ak = requestUrl.searchParams.get("ak") || "";
+        const result = await loadDirectLiveResult(edvnummer, wkid, ak);
+
+        return jsonResponse(
+          result,
+          200,
+          corsHeaders,
+          "no-store"
+        );
+      }
+
       if (!competition) {
         return jsonResponse(
           { error: "competition muss angegeben werden." },
@@ -274,6 +292,59 @@ async function loadSelectedResults(competition, items) {
   );
 }
 
+async function loadDirectLiveResult(edvnummer, wkid, ak = "") {
+  const liveItem = validateDirectLiveItem(edvnummer, wkid, ak);
+  const data = await fetchLiveResults(liveItem);
+
+  if (liveItem.ak) {
+    return {
+      edvnummer: liveItem.edvnummer,
+      wkid: liveItem.wkid,
+      ak: liveItem.ak,
+      data
+    };
+  }
+
+  const liveSourceConfig = await loadLiveSourceConfig();
+  const events = normalizeLiveEvents(
+    {
+      edvnummer: liveItem.edvnummer,
+      wkid: liveItem.wkid
+    },
+    data,
+    liveSourceConfig
+  );
+
+  return {
+    edvnummer: liveItem.edvnummer,
+    wkid: liveItem.wkid,
+    warning: liveSourceConfig.warning,
+    count: events.length,
+    events,
+    data
+  };
+}
+
+function validateDirectLiveItem(edvnummer, wkid, ak = "") {
+  const cleanEdvnummer = String(edvnummer || "");
+  const cleanWkid = String(wkid || "");
+  const cleanAk = String(ak || "").trim();
+
+  if (!/^\d{1,12}$/.test(cleanEdvnummer) || !/^\d{1,12}$/.test(cleanWkid)) {
+    throw new Error("EDV-Nummer und WKID müssen angegeben werden.");
+  }
+
+  if (cleanAk.length > 250) {
+    throw new Error("Die Bezeichnung einer Ergebnisliste ist zu lang.");
+  }
+
+  return {
+    edvnummer: cleanEdvnummer,
+    wkid: cleanWkid,
+    ak: cleanAk
+  };
+}
+
 async function loadCompetitionCatalog(competition) {
   const competitionBaseUrl =
     `${COMPETITIONS_URL}/${encodeURIComponent(competition)}`;
@@ -356,6 +427,24 @@ async function loadCompetitionCatalog(competition) {
     } catch (error) {
       warnings.push(
         `Zusätzliche Live-Ergebnisse konnten nicht geladen werden: ${error}`
+      );
+    }
+  }
+
+  if (liveResultUrls.length === 0 && liveReferenceFilter.size > 0) {
+    try {
+      const liveEvents = await loadDirectLiveCatalog(
+        Array.from(liveReferenceFilter),
+        liveSourceConfig
+      );
+
+      if (liveEvents.length > 0) {
+        events = dedupeCatalogEvents([...events, ...liveEvents]);
+        source = competitionEvents.length > 0 ? "mixed" : "live";
+      }
+    } catch (error) {
+      warnings.push(
+        `Direkte Live-Ergebnisse konnten nicht geladen werden: ${error}`
       );
     }
   }
@@ -700,6 +789,36 @@ async function loadLiveCatalog(
   );
 
   return sourceCatalogs.flat();
+}
+
+async function loadDirectLiveCatalog(referenceKeys, liveSourceConfig) {
+  const references = referenceKeys
+    .map(parseLiveReferenceKey)
+    .filter(Boolean);
+
+  const sourceCatalogs = await mapWithConcurrency(
+    references,
+    MAX_CONCURRENT_REQUESTS,
+    async (reference) => {
+      const data = await fetchLiveResults(reference);
+      return normalizeLiveEvents(reference, data, liveSourceConfig);
+    }
+  );
+
+  return sourceCatalogs.flat();
+}
+
+function parseLiveReferenceKey(referenceKey) {
+  const match = String(referenceKey || "").match(/^(\d{1,12}):(\d{1,12})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  return {
+    edvnummer: match[1],
+    wkid: match[2]
+  };
 }
 
 function assertAllowedExternalUrl(value) {

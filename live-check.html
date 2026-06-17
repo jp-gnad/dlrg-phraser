@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
+  >
+  <title>DLRG Live-ID prüfen</title>
+  <link rel="stylesheet" href="phraser.css?v=20260617-1">
+  <script defer src="live-check.js?v=20260617-1"></script>
+</head>
+<body class="auth-locked">
+  <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
+    <form id="loginForm" class="login-card">
+      <p class="eyebrow">DLRG Phraser</p>
+      <h1 id="loginTitle">Zugang erforderlich</h1>
+      <p class="login-hint">Bitte gib das aktuelle Passwort ein.</p>
+
+      <label class="visually-hidden" for="username">Benutzername</label>
+      <input
+        id="username"
+        class="visually-hidden"
+        name="username"
+        type="text"
+        value="DLRG Phraser"
+        autocomplete="username"
+        tabindex="-1"
+        aria-hidden="true"
+      >
+
+      <label for="password">Passwort</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required
+      >
+
+      <button type="submit">Anmelden</button>
+      <p id="loginError" class="login-error" role="alert" aria-live="polite"></p>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <section class="card">
+      <div class="heading-row">
+        <div>
+          <p class="eyebrow">DLRG Phraser</p>
+          <h1>Live-ID prüfen</h1>
+        </div>
+        <div class="header-actions">
+          <a class="secondary-link" href="phraser.html">Zum Phraser</a>
+          <button id="logoutButton" class="secondary-button" type="button">
+            Abmelden
+          </button>
+        </div>
+      </div>
+
+      <form id="liveLookupForm" class="manual-live-form">
+        <label for="liveIdInput">EDV-Nummer und WKID</label>
+        <div class="inline-form-row">
+          <input
+            id="liveIdInput"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="z. B. 1600000:356"
+            required
+          >
+          <button type="submit">Live-Tabelle laden</button>
+        </div>
+        <p class="field-hint">
+          Format: <code>edvnummer:wkid</code>, zum Beispiel <code>1600000:356</code>.
+        </p>
+      </form>
+
+      <div id="status" class="status" role="status" aria-live="polite">
+        Bereit.
+      </div>
+
+      <section id="liveOverview" class="live-overview" hidden>
+        <h2 id="liveTitle">Live-Tabelle</h2>
+        <dl id="liveMeta" class="metadata-grid"></dl>
+
+        <div class="selection-heading">
+          <div>
+            <h2>Ergebnislisten</h2>
+            <p class="field-hint">
+              Wähle eine Kategorie, um die Tabelle darunter zu laden.
+            </p>
+          </div>
+          <p id="categoryInfo" class="selection-info" aria-live="polite"></p>
+        </div>
+        <div id="categoryList" class="category-list"></div>
+      </section>
+
+      <div class="table-wrapper">
+        <table id="resultTable"></table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
