@@ -2,6 +2,25 @@
 
 const WORKER_URL = "https://dlrg-results.jp-gnad.workers.dev/";
 const AUTH_SESSION_KEY = "dlrg-phraser-auth-year";
+const CUSTOM_EDV_VALUE = "__custom__";
+const KNOWN_EDV_NUMBERS = [
+  ["0100000", "Landesverband Baden"],
+  ["01070005", "Bezirk Karlsruhe / Baden"],
+  ["0202001", "Landesverband Niedersachsen"],
+  ["0210000", "Landesverband Bayern"],
+  ["0826000", "Bezirk Göttingen"],
+  ["0832003", "Nienburg"],
+  ["0861000", "Nürnberg"],
+  ["0900000", "Landesverband Nordrhein"],
+  ["0906000", "Bezirk Rhein-Erft-Kreis"],
+  ["1300000", "Landesverband Westfalen"],
+  ["1313012", "Schwerte"],
+  ["1326000", "Bielefeld / Ostwestfalen-Lippe"],
+  ["1404003", "Bietigheim-Bissingen / Ludwigsburg-Heilbronn"],
+  ["14300005", "Landesverband Württemberg"],
+  ["1600000", "DLRG Bundesebene"],
+  ["1602001", "IGDM / Mitteldeutsche Regionalmeisterschaften"]
+];
 
 let currentEvents = [];
 let currentLiveId = null;
@@ -13,7 +32,11 @@ const loginError = document.getElementById("loginError");
 const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
 const liveLookupForm = document.getElementById("liveLookupForm");
-const liveIdInput = document.getElementById("liveIdInput");
+const edvSelect = document.getElementById("edvSelect");
+const customEdvGroup = document.getElementById("customEdvGroup");
+const customEdvInput = document.getElementById("customEdvInput");
+const wkidInput = document.getElementById("wkidInput");
+const wkidDirectionInput = document.getElementById("wkidDirection");
 const statusElement = document.getElementById("status");
 const liveOverview = document.getElementById("liveOverview");
 const liveTitle = document.getElementById("liveTitle");
@@ -35,7 +58,7 @@ function unlockApp() {
   loginScreen.hidden = true;
   app.hidden = false;
   document.body.classList.remove("auth-locked");
-  liveIdInput.focus();
+  wkidInput.focus();
 }
 
 function lockApp() {
@@ -56,23 +79,92 @@ function initializeAuthentication() {
   }
 }
 
-function parseLiveId(value) {
-  const match = String(value || "").trim().match(/^(\d{1,12})\s*:\s*(\d{1,12})$/);
+function initializeEdvOptions() {
+  edvSelect.replaceChildren();
 
-  if (!match) {
-    throw new Error("Bitte im Format edvnummer:wkid eingeben, z. B. 1600000:356.");
+  KNOWN_EDV_NUMBERS.forEach(([number, label]) => {
+    const option = document.createElement("option");
+    option.value = number;
+    option.textContent = `${number} - ${label}`;
+    edvSelect.appendChild(option);
+  });
+
+  const customOption = document.createElement("option");
+  customOption.value = CUSTOM_EDV_VALUE;
+  customOption.textContent = "Eigene EDV-Nummer eingeben";
+  edvSelect.appendChild(customOption);
+  edvSelect.value = "1600000";
+  updateCustomEdvVisibility();
+}
+
+function updateCustomEdvVisibility() {
+  const useCustomEdv = edvSelect.value === CUSTOM_EDV_VALUE;
+  customEdvGroup.hidden = !useCustomEdv;
+  customEdvInput.required = useCustomEdv;
+
+  if (useCustomEdv) {
+    customEdvInput.focus();
+  }
+}
+
+function getSelectedEdvNumber() {
+  const value = edvSelect.value === CUSTOM_EDV_VALUE
+    ? customEdvInput.value
+    : edvSelect.value;
+
+  const edvnummer = String(value || "").trim();
+
+  if (!/^\d{1,12}$/.test(edvnummer)) {
+    throw new Error("Bitte eine gültige EDV-Nummer eingeben.");
+  }
+
+  return edvnummer;
+}
+
+function parseLiveId() {
+  const wkidValue = String(wkidInput.value || "").trim();
+
+  if (wkidValue.includes(":")) {
+    const match = wkidValue.match(/^(\d{1,12})\s*:\s*(\d{1,12})$/);
+
+    if (!match) {
+      throw new Error("Bitte WKID getrennt eingeben oder im Format edvnummer:wkid einfügen.");
+    }
+
+    setEdvNumber(match[1]);
+    wkidInput.value = match[2];
+    return {
+      edvnummer: match[1],
+      wkid: match[2]
+    };
+  }
+
+  if (!/^\d{1,12}$/.test(wkidValue)) {
+    throw new Error("Bitte eine gültige WKID eingeben.");
   }
 
   return {
-    edvnummer: match[1],
-    wkid: match[2]
+    edvnummer: getSelectedEdvNumber(),
+    wkid: wkidValue
   };
 }
 
-function getNextLiveId(liveId) {
-  const nextWkid = Number(liveId.wkid) + 1;
+function setEdvNumber(edvnummer) {
+  const hasKnownOption = KNOWN_EDV_NUMBERS.some(([number]) => number === edvnummer);
 
-  if (!Number.isSafeInteger(nextWkid) || nextWkid > 999999999999) {
+  edvSelect.value = hasKnownOption ? edvnummer : CUSTOM_EDV_VALUE;
+  customEdvInput.value = hasKnownOption ? "" : edvnummer;
+  updateCustomEdvVisibility();
+}
+
+function getWkidStep() {
+  return wkidDirectionInput.value === "-1" ? -1 : 1;
+}
+
+function getNextLiveId(liveId) {
+  const nextWkid = Number(liveId.wkid) + getWkidStep();
+
+  if (!Number.isSafeInteger(nextWkid) || nextWkid < 0 || nextWkid > 999999999999) {
     return null;
   }
 
@@ -93,8 +185,8 @@ function prepareNextLiveId(liveId) {
     return "";
   }
 
-  liveIdInput.value = formatLiveId(nextLiveId);
-  liveIdInput.select();
+  wkidInput.value = nextLiveId.wkid;
+  wkidInput.select();
   return formatLiveId(nextLiveId);
 }
 
@@ -127,8 +219,13 @@ async function fetchJson(url) {
 }
 
 function setBusy(isBusy) {
-  liveIdInput.disabled = isBusy;
-  liveLookupForm.querySelector("button").disabled = isBusy;
+  edvSelect.disabled = isBusy;
+  customEdvInput.disabled = isBusy;
+  wkidInput.disabled = isBusy;
+  liveLookupForm.querySelectorAll(".direction-button").forEach((button) => {
+    button.disabled = isBusy;
+  });
+  liveLookupForm.querySelector("button[type='submit']").disabled = isBusy;
   categoryList.querySelectorAll("button").forEach((button) => {
     button.disabled = isBusy;
   });
@@ -360,7 +457,7 @@ function createDisciplineCell(sourceRow, fieldNumber) {
 }
 
 async function loadLiveId() {
-  const liveId = parseLiveId(liveIdInput.value);
+  const liveId = parseLiveId();
   currentLiveId = liveId;
   resetOutput();
   currentLiveId = liveId;
@@ -433,6 +530,23 @@ loginForm.addEventListener("submit", (event) => {
 
 logoutButton.addEventListener("click", lockApp);
 
+edvSelect.addEventListener("change", updateCustomEdvVisibility);
+
+liveLookupForm.addEventListener("click", (event) => {
+  const button = event.target.closest(".direction-button");
+
+  if (!button || button.disabled) {
+    return;
+  }
+
+  wkidDirectionInput.value = button.dataset.direction === "-1" ? "-1" : "1";
+  liveLookupForm.querySelectorAll(".direction-button").forEach((directionButton) => {
+    const isSelected = directionButton === button;
+    directionButton.classList.toggle("is-selected", isSelected);
+    directionButton.setAttribute("aria-pressed", String(isSelected));
+  });
+});
+
 liveLookupForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loadLiveId();
@@ -449,4 +563,5 @@ categoryList.addEventListener("click", (event) => {
   loadCategory(currentEvents[index], index);
 });
 
+initializeEdvOptions();
 initializeAuthentication();

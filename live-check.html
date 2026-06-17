@@ -8,8 +8,8 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Live-ID prüfen</title>
-  <link rel="stylesheet" href="phraser.css?v=20260617-1">
-  <script defer src="live-check.js?v=20260617-2"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260617-2">
+  <script defer src="live-check.js?v=20260617-3"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -60,21 +60,61 @@
       </div>
 
       <form id="liveLookupForm" class="manual-live-form">
-        <label for="liveIdInput">EDV-Nummer und WKID</label>
-        <div class="inline-form-row">
-          <input
-            id="liveIdInput"
-            type="text"
-            inputmode="numeric"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="z. B. 1600000:356"
-            required
-          >
+        <div class="live-id-grid">
+          <div class="live-id-field live-id-field-wide">
+            <label for="edvSelect">EDV-Nummer</label>
+            <select id="edvSelect" required></select>
+          </div>
+
+          <div id="customEdvGroup" class="live-id-field" hidden>
+            <label for="customEdvInput">Eigene EDV</label>
+            <input
+              id="customEdvInput"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="z. B. 1600000"
+            >
+          </div>
+
+          <div class="live-id-field">
+            <label for="wkidInput">WKID</label>
+            <input
+              id="wkidInput"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="z. B. 356"
+              required
+            >
+          </div>
+
+          <div class="live-id-field">
+            <span class="field-label">Danach</span>
+            <div class="direction-toggle" role="group" aria-label="Nächste WKID">
+              <button
+                class="direction-button is-selected"
+                type="button"
+                data-direction="1"
+                aria-pressed="true"
+              >+1</button>
+              <button
+                class="direction-button"
+                type="button"
+                data-direction="-1"
+                aria-pressed="false"
+              >-1</button>
+            </div>
+            <input id="wkidDirection" type="hidden" value="1">
+          </div>
+
           <button type="submit">Live-Tabelle laden</button>
         </div>
         <p class="field-hint">
-          Format: <code>edvnummer:wkid</code>, zum Beispiel <code>1600000:356</code>.
+          Wähle eine bekannte EDV-Nummer oder nutze "Eigene EDV". Nach jedem Laden
+          wird die WKID automatisch in der gewählten Richtung vorbereitet.
         </p>
       </form>
 
