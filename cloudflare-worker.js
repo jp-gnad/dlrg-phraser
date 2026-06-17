@@ -450,6 +450,21 @@ async function loadCompetitionCatalog(competition) {
   }
 
   if (events.length === 0) {
+    if (knownLiveCompetition) {
+      warnings.push("Die Live-Ergebnisquelle enthält aktuell noch keine Ergebnislisten.");
+
+      return {
+        competition,
+        competitionName: knownLiveCompetition.name,
+        from: normalizeDate(knownLiveCompetition.from),
+        till: normalizeDate(knownLiveCompetition.till),
+        source: "live",
+        warning: warnings.join(" "),
+        count: 0,
+        events: []
+      };
+    }
+
     throw new Error("In der Ergebnisübersicht wurden keine Listen gefunden.");
   }
 

@@ -19,6 +19,18 @@
       "till": "2026-03-22"
     },
     {
+      "acronym": "LMS_BA2026",
+      "name": "Badische Meisterschaften 2026",
+      "from": "2026-06-19",
+      "till": "2026-06-21"
+    },
+    {
+      "acronym": "BZM_LBHN2026",
+      "name": "Bezirksmeisterschaft Ludwigsburg und Heilbronn 2026",
+      "from": "2026-03-01",
+      "till": "2026-03-01"
+    },
+    {
       "acronym": "BMM2025",
       "name": "Bayerische Mehrkampf-Meisterschaften im Rettungsschwimmen 2025",
       "from": "2025-07-06",
@@ -29,6 +41,12 @@
       "name": "Baden-Württembergische Seniorenmeisterschaften 2025",
       "from": "2025-10-18",
       "till": "2025-10-18"
+    },
+    {
+      "acronym": "LMS_BA2025",
+      "name": "Badische Meisterschaften 2025",
+      "from": "2025-06-29",
+      "till": "2025-06-29"
     },
     {
       "acronym": "TROPHY1_2024",
@@ -170,6 +188,10 @@
     "BWSEN2025": [
       "https://baden.dlrg.de/masters2025/"
     ],
+    "BZM_LBHN2026": [
+      "https://bietigheim-bissingen.dlrg.de/mitmachen/live-1/",
+      "https://bietigheim-bissingen.dlrg.de/mitmachen/rettungssport/live-2/"
+    ],
     "BZM_BI2026": [
       "https://bez-bielefeld.dlrg.de/mitmachen/rettungssport/"
     ],
@@ -197,6 +219,9 @@
     ],
     "KVM-NBG2026": [
       "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
+    ],
+    "LMS_BA2026": [
+      "https://baden.dlrg.de/index.php?id=535155&L=0"
     ],
     "LVM_WE_1_2026": [
       "https://westfalen.dlrg.de/wir-westfalen/fachbereiche/rettungssport/live-ergebnisse/"
@@ -269,6 +294,10 @@
       "0100000:730",
       "0100000:731"
     ],
+    "BZM_LBHN2026": [
+      "1404003:820",
+      "1404003:821"
+    ],
     "DEM2022": [
       "1600000:144",
       "1600000:147",
@@ -300,6 +329,13 @@
       "1600000:198",
       "1600000:199"
     ],
+    "LMS_BA2025": [
+      "0100000:686"
+    ],
+    "LMS_BA2026": [
+      "0100000:888",
+      "0100000:887"
+    ],
     "OWLCUP2024": [
       "1326000:446"
     ]
@@ -307,6 +343,9 @@
   "eventTypes": {
     "0100000:730": "Individual",
     "0100000:731": "Team",
+    "0100000:686": "Individual",
+    "0100000:887": "Team",
+    "0100000:888": "Individual",
     "01070005:467": "Individual",
     "0202001:755": "Individual",
     "0826000:174": "Individual",
@@ -367,6 +406,8 @@
     "1326000:634": "Individual",
     "1326000:445": "Individual",
     "1326000:446": "Individual",
+    "1404003:820": "Team",
+    "1404003:821": "Individual",
     "0900000:569": "Team",
     "0832003:890": "Individual",
     "0900000:592": "Individual",

@@ -69,6 +69,35 @@ function parseLiveId(value) {
   };
 }
 
+function getNextLiveId(liveId) {
+  const nextWkid = Number(liveId.wkid) + 1;
+
+  if (!Number.isSafeInteger(nextWkid) || nextWkid > 999999999999) {
+    return null;
+  }
+
+  return {
+    edvnummer: liveId.edvnummer,
+    wkid: String(nextWkid)
+  };
+}
+
+function formatLiveId(liveId) {
+  return `${liveId.edvnummer}:${liveId.wkid}`;
+}
+
+function prepareNextLiveId(liveId) {
+  const nextLiveId = getNextLiveId(liveId);
+
+  if (!nextLiveId) {
+    return "";
+  }
+
+  liveIdInput.value = formatLiveId(nextLiveId);
+  liveIdInput.select();
+  return formatLiveId(nextLiveId);
+}
+
 function buildWorkerUrl(options = {}) {
   const url = new URL(WORKER_URL);
   url.searchParams.set("mode", "live-direct");
@@ -337,13 +366,16 @@ async function loadLiveId() {
   currentLiveId = liveId;
   setBusy(true);
   statusElement.className = "status";
-  statusElement.textContent = `${liveId.edvnummer}:${liveId.wkid} wird geladen ...`;
+  statusElement.textContent = `${formatLiveId(liveId)} wird geladen ...`;
 
   try {
     const response = await fetchJson(buildWorkerUrl(liveId));
     renderOverview(response);
+    const nextLiveId = prepareNextLiveId(liveId);
     statusElement.textContent =
-      `${response.edvnummer}:${response.wkid} geladen. Wähle eine Ergebnisliste.`;
+      `${formatLiveId(response)} geladen. ` +
+      (nextLiveId ? `Nächste Suche vorbereitet: ${nextLiveId}. ` : "") +
+      "Wähle eine Ergebnisliste.";
   } catch (error) {
     console.error(error);
     resetOutput();
