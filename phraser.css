@@ -192,6 +192,34 @@ h2 {
   background: #eef1f4;
 }
 
+.competition-exported-option {
+  color: #12652b;
+}
+
+.competition-export-stale-option {
+  color: #9a6700;
+}
+
+.competition-export-missing-option {
+  color: #b42318;
+}
+
+.export-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.export-actions button {
+  background: #198754;
+}
+
+.export-actions button:hover:not(:disabled) {
+  background: #12663f;
+}
+
 .manual-live-form {
   max-width: 1200px;
   margin-bottom: 18px;
@@ -585,6 +613,10 @@ pre {
 
   .controls button {
     width: 100%;
+  }
+
+  .export-actions {
+    grid-template-columns: 1fr;
   }
 
   .inline-form-row {

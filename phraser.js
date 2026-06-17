@@ -2,6 +2,24 @@
 
 const WORKER_URL = "https://dlrg-results.jp-gnad.workers.dev/";
 const AUTH_SESSION_KEY = "dlrg-phraser-auth-year";
+const EXPORT_LOG_URL = "downloaded-competitions/exported-competitions.csv";
+const EXPORT_LOG_FILENAME = "exported-competitions.csv";
+const EXPORT_LOG_STORAGE_KEY = "dlrg-phraser-export-log";
+const EXPORT_BATCH_SIZE = 80;
+const EXPORT_LOG_HEADERS = [
+  "exported_at",
+  "competition_code",
+  "competition_name",
+  "from",
+  "till",
+  "source",
+  "event_count",
+  "row_count",
+  "catalog_signature",
+  "data_signature",
+  "stale_reason",
+  "excel_file"
+];
 
 let currentResults = [];
 let currentCatalog = null;
@@ -9,6 +27,12 @@ let activeEventType = "";
 let activeChoiceId = "";
 let catalogChoiceEvents = new Map();
 let competitionListLoaded = false;
+let competitionListCache = [];
+let exportedCompetitionRecords = new Map();
+let exportStateOverrides = new Map();
+let exportLogLoaded = false;
+let exportLogWarning = "";
+let isExporting = false;
 
 const loginScreen = document.getElementById("loginScreen");
 const loginForm = document.getElementById("loginForm");
@@ -25,6 +49,9 @@ const manualCompetitionGroup = document.getElementById(
   "manualCompetitionGroup"
 );
 const competitionInput = document.getElementById("competition");
+const exportActions = document.getElementById("exportActions");
+const excelExportButton = document.getElementById("excelExportButton");
+const exportInfo = document.getElementById("exportInfo");
 const resultSelection = document.getElementById("resultSelection");
 const selectionInfo = document.getElementById("selectionInfo");
 const resultTabs = document.getElementById("resultTabs");
@@ -52,6 +79,13 @@ function unlockApp() {
   if (!competitionListLoaded) {
     loadCompetitionList();
   } else {
+    competitionListInfo.textContent +=
+      ` ${exportedCompetitionRecords.size} Exporte in der CSV/Browserspeicher-Liste.`;
+
+    if (exportLogWarning) {
+      competitionListInfo.textContent += ` Hinweis: ${exportLogWarning}`;
+    }
+
     competitionSelect.focus();
   }
 }
@@ -128,13 +162,337 @@ function formatCompetitionDateRange(from, till) {
     : fromDate;
 }
 
+function normalizeCompetitionCode(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+  const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (character === '"' && inQuotes && nextCharacter === '"') {
+      value += '"';
+      index += 1;
+      continue;
+    }
+
+    if (character === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (character === "," && !inQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+
+    if (character === "\n" && !inQuotes) {
+      row.push(value);
+      rows.push(row);
+      row = [];
+      value = "";
+      continue;
+    }
+
+    value += character;
+  }
+
+  if (value || row.length > 0) {
+    row.push(value);
+    rows.push(row);
+  }
+
+  return rows.filter((item) => item.some((cell) => String(cell).trim()));
+}
+
+function parseExportLogCsv(text) {
+  const rows = parseCsv(text);
+  const headers = rows.shift() || [];
+
+  return rows
+    .map((row) => {
+      const record = {};
+      headers.forEach((header, index) => {
+        record[header] = row[index] || "";
+      });
+      return record;
+    })
+    .filter((record) => normalizeCompetitionCode(record.competition_code));
+}
+
+function escapeCsvValue(value) {
+  const text = String(value === undefined || value === null ? "" : value);
+
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+}
+
+function createExportLogCsv() {
+  const records = Array.from(exportedCompetitionRecords.values()).sort(
+    (left, right) =>
+      String(left.competition_code || "").localeCompare(
+        String(right.competition_code || ""),
+        "de"
+      )
+  );
+  const lines = [
+    EXPORT_LOG_HEADERS.join(","),
+    ...records.map((record) =>
+      EXPORT_LOG_HEADERS.map((header) =>
+        escapeCsvValue(record[header] || "")
+      ).join(",")
+    )
+  ];
+
+  return `${lines.join("\n")}\n`;
+}
+
+function mergeExportRecords(records) {
+  records.forEach((record) => {
+    const key = normalizeCompetitionCode(record.competition_code);
+
+    if (!key) {
+      return;
+    }
+
+    exportedCompetitionRecords.set(key, {
+      ...record,
+      competition_code: key
+    });
+  });
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function createHash(value) {
+  const text = stableStringify(value);
+  let hash = 2166136261;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function createCatalogSignature(catalog) {
+  const events = Array.isArray(catalog && catalog.events)
+    ? catalog.events
+    : [];
+
+  return createHash({
+    competitionName: catalog && catalog.competitionName,
+    from: catalog && catalog.from,
+    till: catalog && catalog.till,
+    source: catalog && catalog.source,
+    events: events.map((event) => ({
+      source: event.source,
+      eventType: event.eventType,
+      round: event.round || "",
+      ageGroup: event.ageGroup || "",
+      gender: event.gender || "",
+      discipline: event.discipline || "",
+      uuid: event.uuid || "",
+      edvnummer: event.edvnummer || "",
+      wkid: event.wkid || "",
+      ak: event.ak || ""
+    }))
+  });
+}
+
+function createDataSignature(sheets) {
+  return createHash(
+    sheets.map((sheet) => ({
+      source: sheet.source,
+      eventType: sheet.eventType,
+      rows: sheet.rows
+    }))
+  );
+}
+
+function readStoredExportRecords() {
+  try {
+    return JSON.parse(localStorage.getItem(EXPORT_LOG_STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredExportRecords() {
+  try {
+    localStorage.setItem(
+      EXPORT_LOG_STORAGE_KEY,
+      JSON.stringify(Array.from(exportedCompetitionRecords.values()))
+    );
+  } catch {
+    // The CSV download is the durable cross-device record.
+  }
+}
+
+async function loadExportLog() {
+  if (exportLogLoaded) {
+    return;
+  }
+
+  mergeExportRecords(readStoredExportRecords());
+
+  try {
+    const response = await fetch(`${EXPORT_LOG_URL}?v=${Date.now()}`, {
+      cache: "no-store"
+    });
+
+    if (response.ok) {
+      mergeExportRecords(parseExportLogCsv(await response.text()));
+    } else if (response.status !== 404) {
+      exportLogWarning =
+        `Export-Liste konnte nicht gelesen werden: HTTP ${response.status}`;
+    }
+  } catch (error) {
+    exportLogWarning =
+      `Export-Liste konnte nicht gelesen werden: ${error.message}`;
+  }
+
+  exportLogLoaded = true;
+}
+
+function isCompetitionExported(code) {
+  return exportedCompetitionRecords.has(normalizeCompetitionCode(code));
+}
+
+function getExportState(code) {
+  const key = normalizeCompetitionCode(code);
+
+  return exportStateOverrides.get(key) ||
+    (exportedCompetitionRecords.has(key) ? "current" : "");
+}
+
+function getExportStatePrefix(state) {
+  if (state === "current") {
+    return "✓ ";
+  }
+
+  if (state === "stale") {
+    return "! ";
+  }
+
+  if (state === "missing") {
+    return "!! ";
+  }
+
+  return "";
+}
+
+function applyExportStateClass(option, state) {
+  option.classList.toggle("competition-exported-option", state === "current");
+  option.classList.toggle("competition-export-stale-option", state === "stale");
+  option.classList.toggle("competition-export-missing-option", state === "missing");
+}
+
+function updateExportStateFromCatalog(catalog) {
+  const code = normalizeCompetitionCode(getSelectedCompetitionCode());
+  const record = exportedCompetitionRecords.get(code);
+
+  if (!code || !record) {
+    exportStateOverrides.delete(code);
+    return "";
+  }
+
+  if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
+    exportStateOverrides.set(code, "missing");
+    return "Aktuell wurden keine Ergebnislisten gefunden.";
+  }
+
+  if (record.catalog_signature) {
+    const currentSignature = createCatalogSignature(catalog);
+
+    if (record.catalog_signature !== currentSignature) {
+      exportStateOverrides.set(code, "stale");
+      return "Die Ergebnisübersicht hat sich seit dem letzten Export geändert.";
+    }
+  } else if (
+    (record.event_count &&
+      Number(record.event_count) !== catalog.events.length) ||
+    (record.source && record.source !== catalog.source)
+  ) {
+    exportStateOverrides.set(code, "stale");
+    return "Die Ergebnisübersicht passt nicht mehr zum alten CSV-Eintrag.";
+  }
+
+  exportStateOverrides.set(code, "current");
+  return "";
+}
+
+function slugifyFilename(value) {
+  return String(value || "export")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 120) || "export";
+}
+
+function downloadTextFile(text, filename, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function setCompetitionControlsEnabled() {
   const usesManualCode = competitionSelect.value === "__manual__";
 
   manualCompetitionGroup.hidden = !usesManualCode;
+  updateSelectedCompetitionExportState();
+}
+
+function updateSelectedCompetitionExportState() {
+  competitionSelect.classList.remove("is-exported");
+}
+
+function refreshCompetitionOptions() {
+  if (competitionListCache.length === 0) {
+    updateSelectedCompetitionExportState();
+    return;
+  }
+
+  const selectedValue = competitionSelect.value;
+  renderCompetitionOptions(competitionListCache);
+  competitionSelect.value = selectedValue;
+  setCompetitionControlsEnabled();
 }
 
 function renderCompetitionOptions(competitions) {
+  competitionListCache = competitions;
   const placeholder = document.createElement("option");
   placeholder.value = "";
   placeholder.textContent = "Wettkampf auswählen ...";
@@ -158,10 +516,13 @@ function renderCompetitionOptions(competitions) {
 
     yearCompetitions.forEach((competition) => {
       const option = document.createElement("option");
+      const exportState = getExportState(competition.acronym);
       option.value = competition.acronym;
       option.textContent =
+        `${getExportStatePrefix(exportState)}` +
         `${formatCompetitionDateRange(competition.from, competition.till)} | ` +
         `${competition.name} (${competition.acronym})`;
+      applyExportStateClass(option, exportState);
       group.appendChild(option);
     });
 
@@ -172,6 +533,7 @@ function renderCompetitionOptions(competitions) {
   manualOption.value = "__manual__";
   manualOption.textContent = "Anderen Wettkampfcode manuell eingeben ...";
   competitionSelect.appendChild(manualOption);
+  updateSelectedCompetitionExportState();
 }
 
 async function loadCompetitionList() {
@@ -181,9 +543,10 @@ async function loadCompetitionList() {
   competitionListInfo.textContent = "Wettkampfliste wird geladen ...";
 
   try {
-    const response = await fetchJson(
-      buildWorkerUrl("", { mode: "competitions" })
-    );
+    const [response] = await Promise.all([
+      fetchJson(buildWorkerUrl("", { mode: "competitions" })),
+      loadExportLog()
+    ]);
     const competitions = Array.isArray(response.competitions)
       ? response.competitions
       : [];
@@ -225,6 +588,41 @@ function getSelectedCompetitionCode() {
     : competitionSelect.value;
 }
 
+function setExportControlsReady(isReady) {
+  exportActions.hidden = !isReady;
+  excelExportButton.disabled = !isReady || isExporting;
+  updateExportInfo();
+}
+
+function updateExportInfo() {
+  if (!currentCatalog) {
+    exportInfo.textContent = "";
+    return;
+  }
+
+  const code = getSelectedCompetitionCode();
+  const state = getExportState(code);
+
+  if (state === "current") {
+    exportInfo.textContent = "Dieser Wettkampf ist bereits aktuell exportiert.";
+    return;
+  }
+
+  if (state === "stale") {
+    exportInfo.textContent =
+      "Dieser Wettkampf wurde schon exportiert, die Ergebnisübersicht hat sich aber geändert.";
+    return;
+  }
+
+  if (state === "missing") {
+    exportInfo.textContent =
+      "Dieser Wettkampf wurde schon exportiert, aktuell sind aber keine Ergebnislisten vorhanden.";
+    return;
+  }
+
+  exportInfo.textContent = "Dieser Wettkampf ist noch nicht in der Exportliste markiert.";
+}
+
 function resetResultSelection() {
   currentCatalog = null;
   currentResults = [];
@@ -237,6 +635,7 @@ function resetResultSelection() {
   selectionInfo.textContent = "";
   errorDetails.hidden = true;
   errorOutput.textContent = "";
+  setExportControlsReady(false);
 
   resultTabs.querySelectorAll(".result-tab").forEach((tab) => {
     tab.hidden = false;
@@ -475,12 +874,18 @@ async function loadResultCatalog() {
     );
 
     if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
+      currentCatalog = catalog;
+      updateExportStateFromCatalog(catalog);
+      refreshCompetitionOptions();
       throw new Error("Für diesen Wettkampf wurden keine Ergebnislisten gefunden.");
     }
 
     currentCatalog = catalog;
+    const exportStateMessage = updateExportStateFromCatalog(catalog);
+    refreshCompetitionOptions();
     pageTitle.textContent = catalog.competitionName || competitionCode;
     renderResultCatalog(catalog);
+    setExportControlsReady(true);
 
     const sourceText =
       catalog.source === "live"
@@ -492,6 +897,10 @@ async function loadResultCatalog() {
 
     if (catalog.warning) {
       statusElement.textContent += ` Hinweis: ${catalog.warning}`;
+    }
+
+    if (exportStateMessage) {
+      statusElement.textContent += ` Export-Hinweis: ${exportStateMessage}`;
     }
   } catch (error) {
     console.error(error);
@@ -1147,6 +1556,443 @@ function formatDisciplineStatus(rawTime, points, penalty) {
   return statusParts.join(" / ");
 }
 
+function chunkArray(items, size) {
+  const chunks = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+}
+
+function getRoundLabel(event) {
+  return event.round || "Ergebnis";
+}
+
+function getSourceLabel(source) {
+  return source === "live" ? "DLRG.net" : "competition.net";
+}
+
+function getSourceId(event) {
+  if (event.source === "live") {
+    return `${event.edvnummer}:${event.wkid}`;
+  }
+
+  return event.uuid || "";
+}
+
+function getBaseDisciplineLabel(event) {
+  return event.discipline || "Gesamtwertung";
+}
+
+function parseBirthYearFromName(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/\((\d{2}|\d{4})\)\s*$/);
+
+  if (!match) {
+    return {
+      name: text,
+      birthYear: ""
+    };
+  }
+
+  const rawYear = match[1];
+  let birthYear = rawYear;
+
+  if (rawYear.length === 2) {
+    const currentTwoDigitYear = Number(getCurrentYear().slice(2));
+    const year = Number(rawYear);
+    birthYear = String((year <= currentTwoDigitYear ? 2000 : 1900) + year);
+  }
+
+  return {
+    name: text.replace(/\s+\(\d{2,4}\)\s*$/, "").trim(),
+    birthYear
+  };
+}
+
+function createCompetitionExportRows(result, event, context) {
+  return parseResultPage(result.html, context).map((row) => ({
+    "Quelle": "competition.net",
+    "Typ": getEventTypeLabel(event.eventType),
+    "Runde": getRoundLabel(event),
+    "Platz": row.place,
+    "Wettkampfcode": context.competitionCode,
+    "Wettkampf": context.competitionName,
+    "Datum": context.competitionDate,
+    "AK": event.ageGroup || row.ageGroup,
+    "Gender": getGenderLabel(event.gender || row.gender),
+    "Disziplin": getBaseDisciplineLabel(event) || row.discipline,
+    "Name": row.name,
+    "Geburtsjahr": "",
+    "Verein": row.club,
+    "Zeit": row.time,
+    "DQ / Status": row.status,
+    "Quelle-ID": getSourceId(event)
+  }));
+}
+
+function createLiveBaseExportRow(event, context, sourceRow, index) {
+  const athlete = parseBirthYearFromName(sourceRow.name);
+
+  return {
+    "Quelle": "DLRG.net",
+    "Typ": getEventTypeLabel(event.eventType),
+    "Runde": getRoundLabel(event),
+    "Wettkampfcode": context.competitionCode,
+    "Wettkampf": context.competitionName,
+    "Datum": context.competitionDate,
+    "AK": event.ageGroup,
+    "Gender": getGenderLabel(event.gender),
+    "Gesamtplatz":
+      sourceRow.platz === undefined || sourceRow.platz === null
+        ? index + 1
+        : sourceRow.platz,
+    "Name": athlete.name,
+    "Geburtsjahr": athlete.birthYear,
+    "Gliederung": String(sourceRow.gliederung || "").trim(),
+    "Gesamtpunkte": "",
+    "Diff. zu Platz 1": "",
+    "Quelle-ID": getSourceId(event)
+  };
+}
+
+function addLiveDisciplineColumns(target, disciplineName, rawTime, points, penalty) {
+  const cleanName = String(disciplineName || "Disziplin").trim();
+  const cleanTime = String(rawTime || "").trim();
+  const cleanPoints = String(points || "").trim();
+  const cleanPenalty = String(penalty || "").trim();
+  const statusParts = [];
+
+  if (cleanPenalty) {
+    statusParts.push(cleanPenalty);
+  }
+
+  if (cleanTime && !looksLikeTime(cleanTime)) {
+    statusParts.push(cleanTime);
+  }
+
+  target[`${cleanName} Zeit`] = looksLikeTime(cleanTime) ? cleanTime : "";
+  target[`${cleanName} Punkte`] = cleanPoints;
+  target[`${cleanName} DQ / Status`] = statusParts.join(" / ");
+}
+
+function createLiveMultiDisciplineExportRows(data, event, context) {
+  const rows = Array.isArray(data && data.daten) ? data.daten : [];
+  const disciplines = getLiveDisciplines(data);
+
+  return rows.map((sourceRow, index) => {
+    const row = createLiveBaseExportRow(event, context, sourceRow, index);
+    row["Gesamtpunkte"] = String(sourceRow.punkte || "").trim();
+    row["Diff. zu Platz 1"] = String(sourceRow.diff || "").trim();
+
+    disciplines.forEach((discipline) => {
+      addLiveDisciplineColumns(
+        row,
+        discipline.name,
+        sourceRow[`zeit ${discipline.fieldNumber}`],
+        sourceRow[`punkte ${discipline.fieldNumber}`],
+        sourceRow[`strafe ${discipline.fieldNumber}`]
+      );
+    });
+
+    return row;
+  });
+}
+
+function createLiveSingleDisciplineExportRows(data, event, context) {
+  const rows = Array.isArray(data && data.daten) ? data.daten : [];
+  const discipline =
+    getLiveDisciplines(data)[0] || {
+      name: getBaseDisciplineLabel(event),
+      fieldNumber: 1
+    };
+
+  return rows.map((sourceRow, index) => {
+    const row = createLiveBaseExportRow(event, context, sourceRow, index);
+    addLiveDisciplineColumns(
+      row,
+      discipline.name,
+      sourceRow[`zeit ${discipline.fieldNumber}`],
+      sourceRow[`punkte ${discipline.fieldNumber}`],
+      sourceRow[`strafe ${discipline.fieldNumber}`]
+    );
+    return row;
+  });
+}
+
+function createLiveExportRows(result, event, context) {
+  return isLiveMultiDisciplineData(result.data)
+    ? createLiveMultiDisciplineExportRows(result.data, event, context)
+    : createLiveSingleDisciplineExportRows(result.data, event, context);
+}
+
+function getSheetKey(source, eventType) {
+  return `${source}:${eventType}`;
+}
+
+function getSheetName(source, eventType) {
+  const sourceLabel = source === "live" ? "DLRG.net" : "Competition.net";
+  return `${sourceLabel} ${getEventTypeLabel(eventType)}`;
+}
+
+function addExportRows(sheetGroups, source, eventType, rows) {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const key = getSheetKey(source, eventType);
+
+  if (!sheetGroups.has(key)) {
+    sheetGroups.set(key, {
+      source,
+      eventType,
+      name: getSheetName(source, eventType),
+      rows: []
+    });
+  }
+
+  sheetGroups.get(key).rows.push(...rows);
+}
+
+function normalizeSelectionResultForExport(result, event, context) {
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  return result.source === "live"
+    ? createLiveExportRows(result, event, context)
+    : createCompetitionExportRows(result, event, context);
+}
+
+async function collectExportSheets() {
+  const events = Array.isArray(currentCatalog && currentCatalog.events)
+    ? currentCatalog.events
+    : [];
+  const competitionCode = getSelectedCompetitionCode();
+  const context = {
+    competitionCode,
+    competitionName: currentCatalog.competitionName || competitionCode,
+    competitionDate: getCatalogCompetitionDate()
+  };
+  const sheetGroups = new Map();
+  const errors = [];
+  let processedEvents = 0;
+  let rowCount = 0;
+
+  for (const eventBatch of chunkArray(events, EXPORT_BATCH_SIZE)) {
+    const response = await fetchJson(
+      buildWorkerUrl(competitionCode, { mode: "selection" }),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          items: eventBatch.map(createSelectionRequestItem)
+        })
+      }
+    );
+    const responses = Array.isArray(response.results) ? response.results : [];
+    const eventsByKey = new Map(eventBatch.map((event) => [event.key, event]));
+
+    responses.forEach((result) => {
+      const event = eventsByKey.get(result.key);
+
+      if (!event) {
+        errors.push(`${result.key}: Ergebnisliste ist nicht im Katalog.`);
+        return;
+      }
+
+      try {
+        const rows = normalizeSelectionResultForExport(result, event, context);
+        addExportRows(sheetGroups, event.source, event.eventType, rows);
+        rowCount += rows.length;
+      } catch (error) {
+        errors.push(`${getDisciplineLabel(event)}: ${error.message}`);
+      }
+    });
+
+    processedEvents += eventBatch.length;
+    statusElement.textContent =
+      `${processedEvents} von ${events.length} Ergebnislisten für Excel verarbeitet ...`;
+  }
+
+  return {
+    sheets: Array.from(sheetGroups.values()),
+    errors,
+    rowCount,
+    dataSignature: createDataSignature(Array.from(sheetGroups.values()))
+  };
+}
+
+const COMPETITION_EXPORT_HEADERS = [
+  "Quelle",
+  "Typ",
+  "Runde",
+  "Platz",
+  "Wettkampfcode",
+  "Wettkampf",
+  "Datum",
+  "AK",
+  "Gender",
+  "Disziplin",
+  "Name",
+  "Geburtsjahr",
+  "Verein",
+  "Zeit",
+  "DQ / Status",
+  "Quelle-ID"
+];
+const LIVE_EXPORT_BASE_HEADERS = [
+  "Quelle",
+  "Typ",
+  "Runde",
+  "Wettkampfcode",
+  "Wettkampf",
+  "Datum",
+  "AK",
+  "Gender",
+  "Gesamtplatz",
+  "Name",
+  "Geburtsjahr",
+  "Gliederung",
+  "Gesamtpunkte",
+  "Diff. zu Platz 1",
+  "Quelle-ID"
+];
+
+function getSheetHeaders(sheet) {
+  if (sheet.source === "competition") {
+    return COMPETITION_EXPORT_HEADERS;
+  }
+
+  const headers = [...LIVE_EXPORT_BASE_HEADERS];
+  const seen = new Set(headers);
+
+  sheet.rows.forEach((row) => {
+    Object.keys(row).forEach((key) => {
+      if (!seen.has(key)) {
+        seen.add(key);
+        headers.push(key);
+      }
+    });
+  });
+
+  return headers;
+}
+
+function escapeXml(value) {
+  return String(value === undefined || value === null ? "" : value)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function sanitizeWorksheetName(name, usedNames) {
+  const base = String(name || "Tabelle")
+    .replace(/[\\/?*[\]:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31) || "Tabelle";
+  let candidate = base;
+  let counter = 2;
+
+  while (usedNames.has(candidate)) {
+    const suffix = ` ${counter}`;
+    candidate = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+    counter += 1;
+  }
+
+  usedNames.add(candidate);
+  return candidate;
+}
+
+function createCellXml(value, styleId = "") {
+  const styleAttribute = styleId ? ` ss:StyleID="${styleId}"` : "";
+  return `<Cell${styleAttribute}><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
+}
+
+function createWorksheetXml(sheet, usedNames) {
+  const name = sanitizeWorksheetName(sheet.name, usedNames);
+  const headers = getSheetHeaders(sheet);
+  const headerRow =
+    "<Row>" +
+    headers.map((header) => createCellXml(header, "Header")).join("") +
+    "</Row>";
+  const dataRows = sheet.rows
+    .map((row) =>
+      "<Row>" +
+      headers.map((header) => createCellXml(row[header])).join("") +
+      "</Row>"
+    )
+    .join("");
+
+  return (
+    `<Worksheet ss:Name="${escapeXml(name)}">` +
+    `<Table>${headerRow}${dataRows}</Table>` +
+    "</Worksheet>"
+  );
+}
+
+function createWorkbookXml(sheets) {
+  const usedNames = new Set();
+  const worksheets = sheets
+    .filter((sheet) => sheet.rows.length > 0)
+    .map((sheet) => createWorksheetXml(sheet, usedNames))
+    .join("");
+
+  if (!worksheets) {
+    throw new Error("Es wurden keine exportierbaren Ergebniszeilen gefunden.");
+  }
+
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>' +
+    '<?mso-application progid="Excel.Sheet"?>' +
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" ' +
+    'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+    'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
+    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" ' +
+    'xmlns:html="http://www.w3.org/TR/REC-html40">' +
+    "<Styles>" +
+    '<Style ss:ID="Header"><Font ss:Bold="1"/><Interior ss:Color="#D9EAF7" ss:Pattern="Solid"/></Style>' +
+    "</Styles>" +
+    worksheets +
+    "</Workbook>"
+  );
+}
+
+function createExportFilename() {
+  const code = getSelectedCompetitionCode();
+  const date = currentCatalog && (currentCatalog.from || currentCatalog.till)
+    ? currentCatalog.from || currentCatalog.till
+    : new Date().toISOString().slice(0, 10);
+  return `${slugifyFilename(`${date}_${code}_${currentCatalog.competitionName}`)}.xls`;
+}
+
+function createExportLogRecord(excelFile, rowCount, dataSignature) {
+  const code = normalizeCompetitionCode(getSelectedCompetitionCode());
+  const catalogSignature = createCatalogSignature(currentCatalog);
+
+  return {
+    exported_at: new Date().toISOString(),
+    competition_code: code,
+    competition_name: currentCatalog.competitionName || code,
+    from: currentCatalog.from || "",
+    till: currentCatalog.till || "",
+    source: currentCatalog.source || "",
+    event_count: String((currentCatalog.events || []).length),
+    row_count: String(rowCount),
+    catalog_signature: catalogSignature,
+    data_signature: dataSignature,
+    stale_reason: "",
+    excel_file: excelFile
+  };
+}
+
 function createSelectionRequestItem(event) {
   if (event.source === "competition") {
     return {
@@ -1308,6 +2154,81 @@ async function loadSelectedResults(selectedEvents, choiceId) {
   }
 }
 
+async function exportCurrentCompetition() {
+  if (!currentCatalog || !Array.isArray(currentCatalog.events)) {
+    statusElement.className = "status error";
+    statusElement.textContent = "Bitte zuerst einen Wettkampf auswählen.";
+    return;
+  }
+
+  if (currentCatalog.events.length === 0) {
+    statusElement.className = "status error";
+    statusElement.textContent = "Für diesen Wettkampf gibt es keine exportierbaren Ergebnislisten.";
+    return;
+  }
+
+  isExporting = true;
+  competitionSelect.disabled = true;
+  competitionInput.disabled = true;
+  setCatalogButtonsDisabled(true);
+  setExportControlsReady(true);
+  statusElement.className = "status";
+  statusElement.textContent = "Excel-Export wird vorbereitet ...";
+
+  try {
+    await loadExportLog();
+    const exportData = await collectExportSheets();
+    const workbookXml = createWorkbookXml(exportData.sheets);
+    const excelFile = createExportFilename();
+
+    downloadTextFile(
+      workbookXml,
+      excelFile,
+      "application/vnd.ms-excel;charset=utf-8"
+    );
+
+    const record = createExportLogRecord(
+      excelFile,
+      exportData.rowCount,
+      exportData.dataSignature
+    );
+    mergeExportRecords([record]);
+    exportStateOverrides.set(record.competition_code, "current");
+    writeStoredExportRecords();
+    refreshCompetitionOptions();
+    setExportControlsReady(true);
+
+    window.setTimeout(() => {
+      downloadTextFile(
+        createExportLogCsv(),
+        EXPORT_LOG_FILENAME,
+        "text/csv;charset=utf-8"
+      );
+    }, 250);
+
+    statusElement.textContent =
+      `${exportData.rowCount} Zeilen als Excel exportiert. ` +
+      "Die aktualisierte CSV-Exportliste wird zusätzlich heruntergeladen.";
+
+    if (exportData.errors.length > 0) {
+      statusElement.textContent +=
+        ` ${exportData.errors.length} Ergebnislisten wurden übersprungen.`;
+      errorDetails.hidden = false;
+      errorOutput.textContent = exportData.errors.join("\n");
+    }
+  } catch (error) {
+    console.error(error);
+    statusElement.className = "status error";
+    statusElement.textContent = `Excel-Export fehlgeschlagen: ${error.message}`;
+  } finally {
+    isExporting = false;
+    competitionSelect.disabled = false;
+    competitionInput.disabled = false;
+    setCatalogButtonsDisabled(false);
+    setExportControlsReady(Boolean(currentCatalog));
+  }
+}
+
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
 
@@ -1340,6 +2261,7 @@ competitionInput.addEventListener("input", () => {
   resetResultSelection();
 });
 reloadCompetitionListButton.addEventListener("click", loadCompetitionList);
+excelExportButton.addEventListener("click", exportCurrentCompetition);
 competitionInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     loadResultCatalog();

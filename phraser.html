@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260617-1">
-  <script defer src="phraser.js?v=20260616-2"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260617-3">
+  <script defer src="phraser.js?v=20260617-4"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -84,6 +84,13 @@
               spellcheck="false"
             >
           </div>
+        </div>
+
+        <div id="exportActions" class="export-actions" hidden>
+          <button id="excelExportButton" type="button" disabled>
+            Als Excel speichern
+          </button>
+          <p id="exportInfo" class="field-hint" aria-live="polite"></p>
         </div>
 
       </div>
