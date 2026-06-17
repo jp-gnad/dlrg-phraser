@@ -1216,10 +1216,22 @@ async function loadAllCompetitions() {
     }
   });
 
-  return Array.from(competitionsByAcronym.values()).sort((left, right) => {
-    const dateComparison = left.from.localeCompare(right.from);
-    return dateComparison || left.name.localeCompare(right.name, "de");
-  });
+  return Array.from(competitionsByAcronym.values())
+    .filter((competition) => !isTestCompetition(competition))
+    .sort((left, right) => {
+      const dateComparison = left.from.localeCompare(right.from);
+      return dateComparison || left.name.localeCompare(right.name, "de");
+    });
+}
+
+function isTestCompetition(competition) {
+  const acronym = String(competition && competition.acronym || "").trim();
+  const name = String(competition && competition.name || "").trim();
+
+  return (
+    /(?:^|[_\s-])test(?:[_\s-]|$)/i.test(acronym) ||
+    /\btest(?:wettkampf|veranstaltung|competition)?\b/i.test(name)
+  );
 }
 
 function createCompetitionRanges() {
