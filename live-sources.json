@@ -43,6 +43,60 @@
       "till": "2026-03-01"
     },
     {
+      "acronym": "BMSKA2026",
+      "name": "Bezirksmeisterschaften Bez. Karlsruhe 2026",
+      "from": "2026-03-15",
+      "till": "2026-03-15"
+    },
+    {
+      "acronym": "BZM2026",
+      "name": "Bezirksmeisterschaften Göttingen 2026",
+      "from": "2026-01-20",
+      "till": "2026-01-20"
+    },
+    {
+      "acronym": "KVM_NBG2026",
+      "name": "Kreisverbandsmeisterschaften Nürnberg 2026",
+      "from": "2026-03-23",
+      "till": "2026-03-23"
+    },
+    {
+      "acronym": "KVM-NBG2026",
+      "name": "Kreisverbandsmeisterschaften Nürnberg 2026",
+      "from": "2026-03-23",
+      "till": "2026-03-23"
+    },
+    {
+      "acronym": "NI-LM2026",
+      "name": "Landesmeisterschaften Niedersachsen 2026 - Einzel",
+      "from": "2026-03-28",
+      "till": "2026-03-28"
+    },
+    {
+      "acronym": "LVM_WE_1_2026",
+      "name": "Landesmeisterschaften Pool Westfalen 2026 - Teil I",
+      "from": "2026-04-18",
+      "till": "2026-04-19"
+    },
+    {
+      "acronym": "LVM_POOL_2026_TEIL1_EINZEL",
+      "name": "Landesmeisterschaften Pool Westfalen 2026 - Teil I Einzel",
+      "from": "2026-04-18",
+      "till": "2026-04-18"
+    },
+    {
+      "acronym": "LVM_NR2026",
+      "name": "Landesmeisterschaften Nordrhein 2026",
+      "from": "2026-06-13",
+      "till": "2026-06-14"
+    },
+    {
+      "acronym": "WM2026",
+      "name": "Württembergische Landesmeisterschaften 2026",
+      "from": "2026-06-20",
+      "till": "2026-06-21"
+    },
+    {
       "acronym": "BMM2025",
       "name": "Bayerische Mehrkampf-Meisterschaften im Rettungsschwimmen 2025",
       "from": "2025-07-06",
@@ -310,6 +364,37 @@
       "1404003:820",
       "1404003:821"
     ],
+    "BMSKA2026": [
+      "01070005:467"
+    ],
+    "BZM2026": [
+      "0826000:174",
+      "0826000:177"
+    ],
+    "KVM_NBG2026": [
+      "0202001:755"
+    ],
+    "KVM-NBG2026": [
+      "0202001:755"
+    ],
+    "NI-LM2026": [
+      "0861000:828"
+    ],
+    "LVM_WE_1_2026": [
+      "1300000:842",
+      "1300000:843"
+    ],
+    "LVM_POOL_2026_TEIL1_EINZEL": [
+      "1300000:842"
+    ],
+    "LVM_NR2026": [
+      "0900000:892",
+      "0900000:891"
+    ],
+    "WM2026": [
+      "14300005:881",
+      "14300005:882"
+    ],
     "DEM2022": [
       "1600000:144",
       "1600000:147",
@@ -431,6 +516,8 @@
     "0900000:569": "Team",
     "0832003:890": "Individual",
     "0900000:592": "Individual",
+    "0900000:891": "Team",
+    "0900000:892": "Individual",
     "1602001:678": "Individual",
     "1602001:679": "Team",
     "1602001:494": "Individual",
