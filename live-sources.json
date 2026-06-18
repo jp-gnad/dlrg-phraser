@@ -277,6 +277,9 @@
     "FWM_NRW2024": [
       "https://nordrhein.dlrg.de/service-und-downloads/service-ausbildung/rettungssport/live-ergebnisse-freiwasser-meisterschaft-der-dlrg-nordrhein-und-westfalen-2024-mannschaft-1/"
     ],
+    "HMM2026": [
+      "https://hessen.dlrg.de/informieren/rettungssport/hessische-meisterschaften/ergebnisse-2026/"
+    ],
     "KVM_NBG2026": [
       "https://nuernberg.dlrg.de/mitmachen/rettungssport/trainingstermine-und-wettkaempfe/live-ergebnisse/"
     ],
@@ -372,6 +375,10 @@
       "0826000:174",
       "0826000:177"
     ],
+    "HMM2026": [
+      "0700000:869",
+      "0700000:870"
+    ],
     "KVM_NBG2026": [
       "0202001:755"
     ],
@@ -454,6 +461,8 @@
     "0100000:888": "Individual",
     "01070005:467": "Individual",
     "0202001:755": "Individual",
+    "0700000:869": "Individual",
+    "0700000:870": "Team",
     "0826000:174": "Individual",
     "0826000:177": "Team",
     "1300000:842": "Individual",

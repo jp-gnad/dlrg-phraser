@@ -8,6 +8,7 @@ const KNOWN_EDV_NUMBERS = [
   ["01070005", "Bezirk Karlsruhe / Baden"],
   ["0202001", "Landesverband Niedersachsen"],
   ["0210000", "Landesverband Bayern"],
+  ["0700000", "Landesverband Hessen"],
   ["0826000", "Bezirk Göttingen"],
   ["0832003", "Nienburg"],
   ["0861000", "Nürnberg"],
