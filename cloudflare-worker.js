@@ -1314,13 +1314,17 @@ async function loadAllCompetitions() {
       return;
     }
 
-    competitionsByAcronym.set(competition.acronym, competition);
+    mergeCompetitionListEntry(competitionsByAcronym, competition, {
+      competition: true,
+      live: false
+    });
   });
 
   liveSourceConfig.competitions.forEach((competition) => {
-    if (!competitionsByAcronym.has(competition.acronym)) {
-      competitionsByAcronym.set(competition.acronym, competition);
-    }
+    mergeCompetitionListEntry(competitionsByAcronym, competition, {
+      competition: false,
+      live: true
+    });
   });
 
   return Array.from(competitionsByAcronym.values())
@@ -1329,6 +1333,32 @@ async function loadAllCompetitions() {
       const dateComparison = left.from.localeCompare(right.from);
       return dateComparison || left.name.localeCompare(right.name, "de");
     });
+}
+
+function mergeCompetitionListEntry(competitionsByAcronym, competition, sources) {
+  const acronym = String(competition && competition.acronym || "").trim();
+
+  if (!acronym) {
+    return;
+  }
+
+  const existing = competitionsByAcronym.get(acronym) || {};
+
+  competitionsByAcronym.set(acronym, {
+    ...competition,
+    ...existing,
+    acronym,
+    sources: {
+      competition: Boolean(
+        (existing.sources && existing.sources.competition) ||
+          (sources && sources.competition)
+      ),
+      live: Boolean(
+        (existing.sources && existing.sources.live) ||
+          (sources && sources.live)
+      )
+    }
+  });
 }
 
 function isTestCompetition(competition) {

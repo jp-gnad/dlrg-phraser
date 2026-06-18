@@ -192,6 +192,51 @@ h2 {
   background: #eef1f4;
 }
 
+.source-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  color: #66717b;
+  font-size: 0.86rem;
+}
+
+.source-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.source-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #b8c2cc;
+  box-shadow: inset 0 0 0 1px rgba(32, 37, 42, 0.12);
+}
+
+.source-indicator.is-available {
+  color: #12652b;
+  font-weight: 700;
+}
+
+.source-indicator.is-available .source-dot {
+  background: #1f9d55;
+}
+
+.source-indicator.is-attempted {
+  color: #9a6700;
+  font-weight: 700;
+}
+
+.source-indicator.is-attempted .source-dot {
+  background: #f2c94c;
+}
+
+.source-indicator.is-unavailable .source-dot {
+  background: #d5dbe1;
+}
+
 .competition-exported-option {
   color: #12652b;
 }

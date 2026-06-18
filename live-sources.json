@@ -43,6 +43,12 @@
       "till": "2026-03-15"
     },
     {
+      "acronym": "BZMKA2024",
+      "name": "Bezirksmeisterschaften Bez. Karlsruhe 2024",
+      "from": "2024-01-01",
+      "till": "2024-12-31"
+    },
+    {
       "acronym": "BZM2026",
       "name": "Bezirksmeisterschaften Göttingen 2026",
       "from": "2026-01-20",
@@ -227,6 +233,36 @@
       "name": "Landesseniorenmeisterschaften Pool Nordrhein 2024 - Einzel",
       "from": "2024-11-23",
       "till": "2024-11-23"
+    },
+    {
+      "acronym": "OGWAIB2026",
+      "name": "Ortsgruppenmeisterschaften Waibstadt 2026",
+      "from": "2026-01-01",
+      "till": "2026-12-31"
+    },
+    {
+      "acronym": "OGWAIB2025",
+      "name": "Ortsgruppenmeisterschaften Waibstadt 2025",
+      "from": "2025-01-01",
+      "till": "2025-12-31"
+    },
+    {
+      "acronym": "FW_WAIB_SINS2024",
+      "name": "Freundschaftswettkampf Waibstadt Sinsheim 2024",
+      "from": "2024-01-01",
+      "till": "2024-12-31"
+    },
+    {
+      "acronym": "OGSIN2026",
+      "name": "Vereinsmeisterschaften DLRG OG Sindelfingen 2026",
+      "from": "2026-01-01",
+      "till": "2026-12-31"
+    },
+    {
+      "acronym": "OGSIN_LT2026",
+      "name": "Vereinsmeisterschaften DLRG OG Sindelfingen Linethrow 2026",
+      "from": "2026-01-01",
+      "till": "2026-12-31"
     }
   ],
   "aliases": {
@@ -238,7 +274,7 @@
     "BMM2025": [
       "https://bayern.dlrg-jugend.de/veranstaltungen/bmm/live/"
     ],
-    "BMSKA2026": [
+    "BZMKA2024": [
       "https://bez-karlsruhe.dlrg-jugend.de/angebote/srus/live-ergebnisse/"
     ],
     "BZM_REK2026": [
@@ -338,6 +374,12 @@
     ],
     "WM2026": [
       "https://wuerttemberg.dlrg-jugend.de/liveticker/"
+    ],
+    "OGSIN2026": [
+      "https://sindelfingen.dlrg.de/mitmachen/rettungssport/liveergebnisse/"
+    ],
+    "OGSIN_LT2026": [
+      "https://sindelfingen.dlrg.de/mitmachen/rettungssport/liveergebnisse/"
     ]
   },
   "references": {
@@ -368,7 +410,7 @@
       "1404003:820",
       "1404003:821"
     ],
-    "BMSKA2026": [
+    "BZMKA2024": [
       "01070005:467"
     ],
     "BZM2026": [
@@ -444,6 +486,24 @@
     "OWLCUP2024": [
       "1326000:446"
     ],
+    "OGWAIB2026": [
+      "0105020:792",
+      "0105020:793"
+    ],
+    "OGWAIB2025": [
+      "0105020:605",
+      "0105020:606"
+    ],
+    "FW_WAIB_SINS2024": [
+      "0105020:425",
+      "0105020:426"
+    ],
+    "OGSIN2026": [
+      "1408008:818"
+    ],
+    "OGSIN_LT2026": [
+      "1408008:819"
+    ],
     "MDRM2025": [
       "1602001:678",
       "1602001:679"
@@ -459,6 +519,12 @@
     "0100000:686": "Individual",
     "0100000:887": "Team",
     "0100000:888": "Individual",
+    "0105020:425": "Individual",
+    "0105020:426": "Team",
+    "0105020:605": "Individual",
+    "0105020:606": "Team",
+    "0105020:792": "Individual",
+    "0105020:793": "Team",
     "01070005:467": "Individual",
     "0202001:755": "Individual",
     "0700000:869": "Individual",
@@ -523,6 +589,8 @@
     "1326000:446": "Individual",
     "1404003:820": "Team",
     "1404003:821": "Individual",
+    "1408008:818": "Individual",
+    "1408008:819": "Individual",
     "0900000:569": "Team",
     "0832003:890": "Individual",
     "0900000:592": "Individual",

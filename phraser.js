@@ -41,6 +41,7 @@ const loginError = document.getElementById("loginError");
 const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
 const competitionSelect = document.getElementById("competitionSelect");
+const sourceIndicators = document.getElementById("sourceIndicators");
 const competitionListInfo = document.getElementById("competitionListInfo");
 const reloadCompetitionListButton = document.getElementById(
   "reloadCompetitionListButton"
@@ -473,10 +474,86 @@ function setCompetitionControlsEnabled() {
 
   manualCompetitionGroup.hidden = !usesManualCode;
   updateSelectedCompetitionExportState();
+  updateSourceIndicators();
 }
 
 function updateSelectedCompetitionExportState() {
   competitionSelect.classList.remove("is-exported");
+}
+
+function findCompetitionListEntry(code) {
+  const normalizedCode = String(code || "").toUpperCase();
+  return competitionListCache.find(
+    (competition) => String(competition.acronym || "").toUpperCase() === normalizedCode
+  );
+}
+
+function getSourceAvailabilityFromCatalog(catalog) {
+  const source = String(catalog && catalog.source || "");
+
+  return {
+    competition: source === "competition" || source === "mixed",
+    live: source === "live" || source === "mixed"
+  };
+}
+
+function getSourceAvailability(code) {
+  if (
+    currentCatalog &&
+    String(currentCatalog.competition || "").toUpperCase() ===
+      String(code || "").toUpperCase()
+  ) {
+    return getSourceAvailabilityFromCatalog(currentCatalog);
+  }
+
+  const competition = findCompetitionListEntry(code);
+  const sources = competition && competition.sources;
+
+  if (sources && typeof sources === "object") {
+    return {
+      competition: Boolean(sources.competition),
+      live: Boolean(sources.live)
+    };
+  }
+
+  return {
+    competition: false,
+    live: false
+  };
+}
+
+function hasAnySourceAvailability(availability) {
+  return Boolean(availability.competition || availability.live);
+}
+
+function getAttemptedSourceAvailability(code) {
+  const availability = getSourceAvailability(code);
+
+  if (hasAnySourceAvailability(availability)) {
+    return availability;
+  }
+
+  return {
+    competition: Boolean(code),
+    live: false
+  };
+}
+
+function updateSourceIndicators(options = {}) {
+  const code = getSelectedCompetitionCode();
+  const availability = options.availability || getSourceAvailability(code);
+  const attempted = Boolean(options.attempted);
+  const hasSelection = Boolean(code);
+
+  sourceIndicators
+    .querySelectorAll("[data-source-indicator]")
+    .forEach((indicator) => {
+      const source = indicator.dataset.sourceIndicator;
+      const isAvailable = hasSelection && Boolean(availability[source]);
+      indicator.classList.toggle("is-available", isAvailable && !attempted);
+      indicator.classList.toggle("is-attempted", isAvailable && attempted);
+      indicator.classList.toggle("is-unavailable", hasSelection && !isAvailable);
+    });
 }
 
 function refreshCompetitionOptions() {
@@ -851,6 +928,18 @@ function renderResultCatalog(catalog) {
   setActiveEventType(eventTypes[0]);
 }
 
+function getCatalogSourceText(source) {
+  if (source === "live") {
+    return "aus DLRG.net";
+  }
+
+  if (source === "mixed") {
+    return "aus Competition.net und DLRG.net";
+  }
+
+  return "aus Competition.net";
+}
+
 async function loadResultCatalog() {
   const competitionCode = getSelectedCompetitionCode();
 
@@ -875,12 +964,14 @@ async function loadResultCatalog() {
 
     if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
       currentCatalog = catalog;
+      updateSourceIndicators();
       updateExportStateFromCatalog(catalog);
       refreshCompetitionOptions();
       throw new Error("Für diesen Wettkampf wurden keine Ergebnislisten gefunden.");
     }
 
     currentCatalog = catalog;
+    updateSourceIndicators();
     const exportStateMessage = updateExportStateFromCatalog(catalog);
     refreshCompetitionOptions();
     pageTitle.textContent = catalog.competitionName || competitionCode;
@@ -892,7 +983,7 @@ async function loadResultCatalog() {
         ? "inklusive offizieller Vorläufe und Finals"
         : "aus der competition.net-Übersicht";
     statusElement.textContent =
-      `${catalog.events.length} Ergebnislisten ${sourceText} zugeordnet. ` +
+      `${catalog.events.length} Ergebnislisten ${getCatalogSourceText(catalog.source)} zugeordnet. ` +
       "Wähle bei der gewünschten Disziplin Geschlecht und Runde.";
 
     if (catalog.warning) {
@@ -904,7 +995,14 @@ async function loadResultCatalog() {
     }
   } catch (error) {
     console.error(error);
+    const attemptedSourceAvailability = currentCatalog
+      ? getSourceAvailabilityFromCatalog(currentCatalog)
+      : getAttemptedSourceAvailability(competitionCode);
     resetResultSelection();
+    updateSourceIndicators({
+      attempted: true,
+      availability: attemptedSourceAvailability
+    });
     statusElement.className = "status error";
     statusElement.textContent = `Fehler: ${error.message}`;
   } finally {
