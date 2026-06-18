@@ -43,6 +43,7 @@ const logoutButton = document.getElementById("logoutButton");
 const competitionSelect = document.getElementById("competitionSelect");
 const sourceIndicators = document.getElementById("sourceIndicators");
 const competitionNetLink = document.getElementById("competitionNetLink");
+const liveSourceLinks = document.getElementById("liveSourceLinks");
 const competitionListInfo = document.getElementById("competitionListInfo");
 const reloadCompetitionListButton = document.getElementById(
   "reloadCompetitionListButton"
@@ -561,6 +562,53 @@ function updateSourceIndicators(options = {}) {
   competitionNetLink.href = showCompetitionLink
     ? `https://competition.dlrg.net/de/competitions/${encodeURIComponent(code)}/results`
     : "#";
+  updateLiveSourceLinks();
+}
+
+function getLiveSourceReferences() {
+  if (!currentCatalog || !Array.isArray(currentCatalog.events)) {
+    return [];
+  }
+
+  const references = new Map();
+
+  currentCatalog.events.forEach((event) => {
+    if (event.source !== "live" || !event.edvnummer || !event.wkid) {
+      return;
+    }
+
+    const key = `${event.edvnummer}:${event.wkid}`;
+    references.set(key, {
+      edvnummer: event.edvnummer,
+      wkid: event.wkid
+    });
+  });
+
+  return Array.from(references.values()).sort((left, right) => {
+    const wkidDifference = Number(left.wkid) - Number(right.wkid);
+    return wkidDifference ||
+      String(left.edvnummer).localeCompare(String(right.edvnummer), "de");
+  });
+}
+
+function updateLiveSourceLinks() {
+  const references = getLiveSourceReferences();
+
+  liveSourceLinks.replaceChildren();
+  liveSourceLinks.hidden = references.length === 0;
+
+  references.forEach((reference) => {
+    const link = document.createElement("a");
+    const url = new URL("live-check.html", window.location.href);
+    url.searchParams.set("edvnummer", reference.edvnummer);
+    url.searchParams.set("wkid", reference.wkid);
+
+    link.className = "live-source-link";
+    link.href = url.toString();
+    link.textContent = `${reference.edvnummer}:${reference.wkid}`;
+    link.title = "Im Live-ID-Prüfer öffnen";
+    liveSourceLinks.appendChild(link);
+  });
 }
 
 function refreshCompetitionOptions() {

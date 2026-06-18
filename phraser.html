@@ -8,8 +8,8 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260618-3">
-  <script defer src="phraser.js?v=20260618-3"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260618-4">
+  <script defer src="phraser.js?v=20260618-4"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -89,6 +89,12 @@
               Competition.net öffnen
             </a>
           </div>
+          <div
+            id="liveSourceLinks"
+            class="live-source-links"
+            aria-label="DLRG.net Live-IDs"
+            hidden
+          ></div>
           <p id="competitionListInfo" class="field-hint" aria-live="polite"></p>
           <button
             id="reloadCompetitionListButton"

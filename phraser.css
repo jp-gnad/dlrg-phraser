@@ -247,6 +247,31 @@ h2 {
   color: #003f78;
 }
 
+.live-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+}
+
+.live-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid #cbd5dd;
+  border-radius: 999px;
+  color: #33404b;
+  background: #f7f9fa;
+  text-decoration: none;
+}
+
+.live-source-link:hover {
+  border-color: #0074c8;
+  color: #00549f;
+}
+
 .competition-exported-option {
   color: #12652b;
 }
