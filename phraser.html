@@ -8,8 +8,8 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260618-2">
-  <script defer src="phraser.js?v=20260618-2"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260618-3">
+  <script defer src="phraser.js?v=20260618-3"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -78,6 +78,16 @@
               <span class="source-dot" aria-hidden="true"></span>
               DLRG.net
             </span>
+            <a
+              id="competitionNetLink"
+              class="source-direct-link"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              hidden
+            >
+              Competition.net öffnen
+            </a>
           </div>
           <p id="competitionListInfo" class="field-hint" aria-live="polite"></p>
           <button

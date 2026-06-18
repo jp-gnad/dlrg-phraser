@@ -259,16 +259,35 @@
       "till": "2026-12-31"
     },
     {
-      "acronym": "OGSIN_LT2026",
-      "name": "Vereinsmeisterschaften DLRG OG Sindelfingen Linethrow 2026",
-      "from": "2026-01-01",
-      "till": "2026-12-31"
+      "acronym": "BMS_RN2026",
+      "name": "Bezirksmeisterschaften Rhein-Neckar 2026",
+      "from": "2026-03-21",
+      "till": "2026-03-21"
+    },
+    {
+      "acronym": "BMS_RN2025",
+      "name": "Bezirksmeisterschaften Rhein-Neckar 2025",
+      "from": "2025-01-01",
+      "till": "2025-12-31"
+    },
+    {
+      "acronym": "BMS_RN2024",
+      "name": "Bezirksmeisterschaften Rhein-Neckar 2024",
+      "from": "2024-01-01",
+      "till": "2024-12-31"
+    },
+    {
+      "acronym": "BMS_RN2023",
+      "name": "Bezirksmeisterschaften Rhein-Neckar 2023",
+      "from": "2023-01-01",
+      "till": "2023-12-31"
     }
   ],
   "aliases": {
     "BZM_LBHN2026": "BMLBHN2026",
     "KVM-NBG2026": "KVM_NBG2026",
-    "LVM_POOL_2026_TEIL1_EINZEL": "LVM_WE_1_2026"
+    "LVM_POOL_2026_TEIL1_EINZEL": "LVM_WE_1_2026",
+    "OGSIN_LT2026": "OGSIN2026"
   },
   "resultPages": {
     "BMM2025": [
@@ -378,8 +397,17 @@
     "OGSIN2026": [
       "https://sindelfingen.dlrg.de/mitmachen/rettungssport/liveergebnisse/"
     ],
-    "OGSIN_LT2026": [
-      "https://sindelfingen.dlrg.de/mitmachen/rettungssport/liveergebnisse/"
+    "BMS_RN2026": [
+      "https://rhein-neckar.dlrg-jugend.de/aktivitaeten/bezirksmeisterschaften/"
+    ],
+    "BMS_RN2025": [
+      "https://rhein-neckar.dlrg-jugend.de/aktivitaeten/bezirksmeisterschaften/"
+    ],
+    "BMS_RN2024": [
+      "https://rhein-neckar.dlrg-jugend.de/aktivitaeten/bezirksmeisterschaften/"
+    ],
+    "BMS_RN2023": [
+      "https://rhein-neckar.dlrg-jugend.de/aktivitaeten/bezirksmeisterschaften/"
     ]
   },
   "references": {
@@ -499,10 +527,24 @@
       "0105020:426"
     ],
     "OGSIN2026": [
-      "1408008:818"
-    ],
-    "OGSIN_LT2026": [
+      "1408008:818",
       "1408008:819"
+    ],
+    "BMS_RN2026": [
+      "01050005:814",
+      "01050005:815"
+    ],
+    "BMS_RN2025": [
+      "01050005:616",
+      "01050005:617"
+    ],
+    "BMS_RN2024": [
+      "01050005:464",
+      "01050005:463"
+    ],
+    "BMS_RN2023": [
+      "01050005:307",
+      "01050005:308"
     ],
     "MDRM2025": [
       "1602001:678",
@@ -519,6 +561,14 @@
     "0100000:686": "Individual",
     "0100000:887": "Team",
     "0100000:888": "Individual",
+    "01050005:307": "Individual",
+    "01050005:308": "Team",
+    "01050005:463": "Team",
+    "01050005:464": "Individual",
+    "01050005:616": "Individual",
+    "01050005:617": "Team",
+    "01050005:814": "Individual",
+    "01050005:815": "Team",
     "0105020:425": "Individual",
     "0105020:426": "Team",
     "0105020:605": "Individual",

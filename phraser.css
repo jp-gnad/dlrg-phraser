@@ -237,6 +237,16 @@ h2 {
   background: #d5dbe1;
 }
 
+.source-direct-link {
+  color: #00549f;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.source-direct-link:hover {
+  color: #003f78;
+}
+
 .competition-exported-option {
   color: #12652b;
 }

@@ -5,6 +5,8 @@ const AUTH_SESSION_KEY = "dlrg-phraser-auth-year";
 const CUSTOM_EDV_VALUE = "__custom__";
 const KNOWN_EDV_NUMBERS = [
   ["0100000", "Landesverband Baden"],
+  ["0105000", "Bezirk Rhein-Neckar / Baden"],
+  ["01050005", "DLRG-Jugend Bezirk Rhein-Neckar / Baden"],
   ["0105020", "Ortsgruppe Waibstadt / Baden"],
   ["01070005", "Bezirk Karlsruhe / Baden"],
   ["0202001", "Landesverband Niedersachsen"],
@@ -18,8 +20,8 @@ const KNOWN_EDV_NUMBERS = [
   ["1300000", "Landesverband Westfalen"],
   ["1313012", "Schwerte"],
   ["1326000", "Bielefeld / Ostwestfalen-Lippe"],
-  ["1408008", "Ortsgruppe Sindelfingen / Wuerttemberg"],
   ["1404003", "Bietigheim-Bissingen / Ludwigsburg-Heilbronn"],
+  ["1408008", "Ortsgruppe Sindelfingen / Wuerttemberg"],
   ["14300005", "Landesverband Württemberg"],
   ["1600000", "DLRG Bundesebene"],
   ["1602001", "IGDM / Mitteldeutsche Regionalmeisterschaften"]

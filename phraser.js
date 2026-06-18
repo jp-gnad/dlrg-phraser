@@ -42,6 +42,7 @@ const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
 const competitionSelect = document.getElementById("competitionSelect");
 const sourceIndicators = document.getElementById("sourceIndicators");
+const competitionNetLink = document.getElementById("competitionNetLink");
 const competitionListInfo = document.getElementById("competitionListInfo");
 const reloadCompetitionListButton = document.getElementById(
   "reloadCompetitionListButton"
@@ -544,6 +545,7 @@ function updateSourceIndicators(options = {}) {
   const availability = options.availability || getSourceAvailability(code);
   const attempted = Boolean(options.attempted);
   const hasSelection = Boolean(code);
+  const showCompetitionLink = hasSelection && Boolean(availability.competition);
 
   sourceIndicators
     .querySelectorAll("[data-source-indicator]")
@@ -554,6 +556,11 @@ function updateSourceIndicators(options = {}) {
       indicator.classList.toggle("is-attempted", isAvailable && attempted);
       indicator.classList.toggle("is-unavailable", hasSelection && !isAvailable);
     });
+
+  competitionNetLink.hidden = !showCompetitionLink;
+  competitionNetLink.href = showCompetitionLink
+    ? `https://competition.dlrg.net/de/competitions/${encodeURIComponent(code)}/results`
+    : "#";
 }
 
 function refreshCompetitionOptions() {
