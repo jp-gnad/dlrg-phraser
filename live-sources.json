@@ -43,12 +43,6 @@
       "till": "2026-03-15"
     },
     {
-      "acronym": "BZMKA2024",
-      "name": "Bezirksmeisterschaften Bez. Karlsruhe 2024",
-      "from": "2024-01-01",
-      "till": "2024-12-31"
-    },
-    {
       "acronym": "BZM2026",
       "name": "Bezirksmeisterschaften Göttingen 2026",
       "from": "2026-01-20",
@@ -293,7 +287,7 @@
     "BMM2025": [
       "https://bayern.dlrg-jugend.de/veranstaltungen/bmm/live/"
     ],
-    "BZMKA2024": [
+    "BMSKA2026": [
       "https://bez-karlsruhe.dlrg-jugend.de/angebote/srus/live-ergebnisse/"
     ],
     "BZM_REK2026": [
@@ -438,7 +432,7 @@
       "1404003:820",
       "1404003:821"
     ],
-    "BZMKA2024": [
+    "BMSKA2026": [
       "01070005:467"
     ],
     "BZM2026": [

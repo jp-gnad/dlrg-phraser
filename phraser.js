@@ -1746,7 +1746,8 @@ function parseBirthYearFromName(value) {
   if (!match) {
     return {
       name: text,
-      birthYear: ""
+      birthYear: "",
+      birthYearShort: ""
     };
   }
 
@@ -1761,7 +1762,8 @@ function parseBirthYearFromName(value) {
 
   return {
     name: text.replace(/\s+\(\d{2,4}\)\s*$/, "").trim(),
-    birthYear
+    birthYear,
+    birthYearShort: rawYear.length === 4 ? rawYear.slice(-2) : rawYear
   };
 }
 
@@ -1831,6 +1833,70 @@ function addLiveDisciplineColumns(target, disciplineName, rawTime, points, penal
   target[`${cleanName} DQ / Status`] = statusParts.join(" / ");
 }
 
+function getLiveIndividualDisciplineKey(index, field) {
+  return `__discipline_${index}_${field}`;
+}
+
+function getTrimmedCellValue(value) {
+  return value === undefined || value === null ? "" : String(value).trim();
+}
+
+function formatLiveIndividualPenalty(rawTime, penalty) {
+  const cleanTime = getTrimmedCellValue(rawTime);
+  const cleanPenalty = getTrimmedCellValue(penalty);
+
+  return [
+    cleanPenalty,
+    cleanTime && !looksLikeTime(cleanTime) ? cleanTime : ""
+  ].filter(Boolean).join(" / ");
+}
+
+function createLiveIndividualExportRows(data, event) {
+  const rows = Array.isArray(data && data.daten) ? data.daten : [];
+  const disciplines = getLiveDisciplines(data);
+
+  return rows.map((sourceRow, index) => {
+    const athlete = parseBirthYearFromName(sourceRow.name);
+    const row = {
+      "Name": athlete.name,
+      "Gender": event.gender,
+      "AK": event.ageGroup,
+      "Jahrgang": athlete.birthYearShort,
+      "Gliederung": getTrimmedCellValue(sourceRow.gliederung),
+      "__blank_1": "",
+      "__blank_2": "",
+      "__blank_3": "",
+      "Gesamtplatz":
+        sourceRow.platz === undefined || sourceRow.platz === null
+          ? index + 1
+          : sourceRow.platz,
+      "Gesamtpunkte": getTrimmedCellValue(sourceRow.punkte),
+      "Diff. zu Platz 1": getTrimmedCellValue(sourceRow.diff),
+      "__blank_4": "",
+      "__blank_5": ""
+    };
+
+    disciplines.forEach((discipline, disciplineIndex) => {
+      const fieldNumber = discipline.fieldNumber;
+      const rawTime = getTrimmedCellValue(sourceRow[`zeit ${fieldNumber}`]);
+      const points = getTrimmedCellValue(sourceRow[`punkte ${fieldNumber}`]);
+      const penalty = getTrimmedCellValue(sourceRow[`strafe ${fieldNumber}`]);
+
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "name")] =
+        discipline.name;
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "blank_before")] = "";
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "time")] =
+        looksLikeTime(rawTime) ? rawTime : "";
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "points")] = points;
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "penalty")] =
+        formatLiveIndividualPenalty(rawTime, penalty);
+      row[getLiveIndividualDisciplineKey(disciplineIndex, "blank_after")] = "";
+    });
+
+    return row;
+  });
+}
+
 function createLiveMultiDisciplineExportRows(data, event, context) {
   const rows = Array.isArray(data && data.daten) ? data.daten : [];
   const disciplines = getLiveDisciplines(data);
@@ -1876,6 +1942,10 @@ function createLiveSingleDisciplineExportRows(data, event, context) {
 }
 
 function createLiveExportRows(result, event, context) {
+  if (result.source === "live" && event.eventType === "Individual") {
+    return createLiveIndividualExportRows(result.data, event);
+  }
+
   return isLiveMultiDisciplineData(result.data)
     ? createLiveMultiDisciplineExportRows(result.data, event, context)
     : createLiveSingleDisciplineExportRows(result.data, event, context);
@@ -2016,9 +2086,85 @@ const LIVE_EXPORT_BASE_HEADERS = [
   "Quelle-ID"
 ];
 
+const LIVE_INDIVIDUAL_EXPORT_HEADERS = [
+  { key: "Name", label: "Nachname, Vorname" },
+  { key: "Gender", label: "Gender" },
+  { key: "AK", label: "Altersklasse" },
+  { key: "Jahrgang", label: "Jahrgang" },
+  { key: "Gliederung", label: "Ortsgruppe" },
+  { key: "__blank_1", label: "" },
+  { key: "__blank_2", label: "" },
+  { key: "__blank_3", label: "" },
+  { key: "Gesamtplatz", label: "Gesamt Platzierung" },
+  { key: "Gesamtpunkte", label: "3-Kampf Punkte" },
+  { key: "Diff. zu Platz 1", label: "Punktedifferenz" },
+  { key: "__blank_4", label: "" },
+  { key: "__blank_5", label: "" }
+];
+
+function normalizeSheetHeader(header) {
+  return typeof header === "string"
+    ? { key: header, label: header }
+    : header;
+}
+
+function getLiveIndividualExportHeaders(sheet) {
+  const headers = [...LIVE_INDIVIDUAL_EXPORT_HEADERS];
+  const disciplineNames = new Map();
+
+  sheet.rows.forEach((row) => {
+    Object.keys(row).forEach((key) => {
+      const match = key.match(/^__discipline_(\d+)_name$/);
+
+      if (match) {
+        const index = Number(match[1]);
+
+        if (!disciplineNames.has(index)) {
+          disciplineNames.set(index, String(row[key] || "Disziplin").trim());
+        }
+      }
+    });
+  });
+
+  Array.from(disciplineNames.entries())
+    .sort(([left], [right]) => left - right)
+    .forEach(([index, name]) => {
+      const disciplineName = name || "Disziplin";
+
+      headers.push(
+        {
+          key: getLiveIndividualDisciplineKey(index, "blank_before"),
+          label: ""
+        },
+        {
+          key: getLiveIndividualDisciplineKey(index, "time"),
+          label: `${disciplineName} Zeit`
+        },
+        {
+          key: getLiveIndividualDisciplineKey(index, "points"),
+          label: `${disciplineName} Punkte`
+        },
+        {
+          key: getLiveIndividualDisciplineKey(index, "penalty"),
+          label: `${disciplineName} DQ/Strafe Code`
+        },
+        {
+          key: getLiveIndividualDisciplineKey(index, "blank_after"),
+          label: ""
+        }
+      );
+    });
+
+  return headers;
+}
+
 function getSheetHeaders(sheet) {
   if (sheet.source === "competition") {
     return COMPETITION_EXPORT_HEADERS;
+  }
+
+  if (sheet.source === "live" && sheet.eventType === "Individual") {
+    return getLiveIndividualExportHeaders(sheet);
   }
 
   const headers = [...LIVE_EXPORT_BASE_HEADERS];
@@ -2071,15 +2217,15 @@ function createCellXml(value, styleId = "") {
 
 function createWorksheetXml(sheet, usedNames) {
   const name = sanitizeWorksheetName(sheet.name, usedNames);
-  const headers = getSheetHeaders(sheet);
+  const headers = getSheetHeaders(sheet).map(normalizeSheetHeader);
   const headerRow =
     "<Row>" +
-    headers.map((header) => createCellXml(header, "Header")).join("") +
+    headers.map((header) => createCellXml(header.label, "Header")).join("") +
     "</Row>";
   const dataRows = sheet.rows
     .map((row) =>
       "<Row>" +
-      headers.map((header) => createCellXml(row[header])).join("") +
+      headers.map((header) => createCellXml(row[header.key])).join("") +
       "</Row>"
     )
     .join("");
