@@ -8,8 +8,8 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260618-4">
-  <script defer src="phraser.js?v=20260626-3"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260626-1">
+  <script defer src="phraser.js?v=20260626-5"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -61,6 +61,16 @@
 
       <div class="controls">
         <div class="competition-control">
+          <section
+            id="currentCompetitions"
+            class="current-competitions"
+            aria-labelledby="currentCompetitionsTitle"
+            hidden
+          >
+            <h2 id="currentCompetitionsTitle">Läuft gerade</h2>
+            <div id="currentCompetitionList" class="current-competition-list"></div>
+          </section>
+
           <label for="competitionSelect">Wettkampf</label>
           <select id="competitionSelect" disabled>
             <option value="">Wettkämpfe werden geladen ...</option>

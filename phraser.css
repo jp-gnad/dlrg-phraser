@@ -171,6 +171,51 @@ h2 {
   font-size: 0.82rem;
 }
 
+.current-competitions {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid #cfe3d7;
+  border-radius: 10px;
+  background: #f3fbf6;
+}
+
+.current-competitions h2 {
+  margin-bottom: 8px;
+  color: #12652b;
+  font-size: 0.96rem;
+}
+
+.current-competition-list {
+  display: grid;
+  gap: 8px;
+}
+
+.current-competition-button {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid #91c9a5;
+  color: #173b24;
+  background: #fff;
+  text-align: left;
+}
+
+.current-competition-button:hover:not(:disabled) {
+  border-color: #198754;
+  color: #0f542d;
+  background: #e8f7ed;
+}
+
+.current-competition-title {
+  font-weight: 700;
+}
+
+.current-competition-meta {
+  color: #66717b;
+  font-size: 0.8rem;
+}
+
 .manual-competition {
   margin-top: 12px;
 }

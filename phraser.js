@@ -99,6 +99,8 @@ const loginError = document.getElementById("loginError");
 const app = document.getElementById("app");
 const logoutButton = document.getElementById("logoutButton");
 const competitionSelect = document.getElementById("competitionSelect");
+const currentCompetitions = document.getElementById("currentCompetitions");
+const currentCompetitionList = document.getElementById("currentCompetitionList");
 const sourceIndicators = document.getElementById("sourceIndicators");
 const competitionNetLink = document.getElementById("competitionNetLink");
 const liveSourceLinks = document.getElementById("liveSourceLinks");
@@ -221,6 +223,40 @@ function formatCompetitionDateRange(from, till) {
   return tillDate && tillDate !== fromDate
     ? `${fromDate} - ${tillDate}`
     : fromDate;
+}
+
+function getTodayIsoDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isCompetitionRunningToday(competition, todayIso = getTodayIsoDate()) {
+  const from = String(competition && competition.from || "").trim();
+  const till = String(competition && competition.till || from).trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    return false;
+  }
+
+  if (isFullYearPlaceholderDate(from, till)) {
+    return false;
+  }
+
+  return from <= todayIso && todayIso <= (till || from);
+}
+
+function isFullYearPlaceholderDate(from, till) {
+  const year = String(from || "").slice(0, 4);
+
+  return (
+    Boolean(year) &&
+    from === `${year}-01-01` &&
+    till === `${year}-12-31`
+  );
 }
 
 function normalizeCompetitionCode(value) {
@@ -831,6 +867,7 @@ function updateLiveSourceLinks() {
 function refreshCompetitionOptions() {
   if (competitionListCache.length === 0) {
     updateSelectedCompetitionExportState();
+    renderCurrentCompetitions([]);
     return;
   }
 
@@ -882,7 +919,46 @@ function renderCompetitionOptions(competitions) {
   manualOption.value = "__manual__";
   manualOption.textContent = "Anderen Wettkampfcode manuell eingeben ...";
   competitionSelect.appendChild(manualOption);
+  renderCurrentCompetitions(competitions);
   updateSelectedCompetitionExportState();
+}
+
+function renderCurrentCompetitions(competitions) {
+  const runningCompetitions = competitions
+    .filter((competition) => isCompetitionRunningToday(competition))
+    .sort((left, right) => {
+      const tillComparison = String(left.till || left.from).localeCompare(
+        String(right.till || right.from)
+      );
+
+      return tillComparison || String(left.name || "").localeCompare(
+        String(right.name || ""),
+        "de"
+      );
+    });
+
+  currentCompetitionList.replaceChildren();
+  currentCompetitions.hidden = runningCompetitions.length === 0;
+
+  runningCompetitions.forEach((competition) => {
+    const button = document.createElement("button");
+    button.className = "current-competition-button";
+    button.type = "button";
+    button.dataset.competitionCode = competition.acronym;
+
+    const title = document.createElement("span");
+    title.className = "current-competition-title";
+    title.textContent = competition.name || competition.acronym;
+
+    const meta = document.createElement("span");
+    meta.className = "current-competition-meta";
+    meta.textContent =
+      `${formatCompetitionDateRange(competition.from, competition.till)} | ` +
+      competition.acronym;
+
+    button.append(title, meta);
+    currentCompetitionList.appendChild(button);
+  });
 }
 
 async function loadCompetitionList() {
@@ -3334,6 +3410,17 @@ competitionInput.addEventListener("input", () => {
 });
 reloadCompetitionListButton.addEventListener("click", loadCompetitionList);
 excelExportButton.addEventListener("click", exportCurrentCompetition);
+currentCompetitionList.addEventListener("click", (event) => {
+  const button = event.target.closest(".current-competition-button");
+
+  if (!button || !button.dataset.competitionCode) {
+    return;
+  }
+
+  competitionSelect.value = button.dataset.competitionCode;
+  setCompetitionControlsEnabled();
+  loadResultCatalog();
+});
 competitionInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     loadResultCatalog();
