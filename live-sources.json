@@ -549,6 +549,26 @@
       "1602001:495"
     ]
   },
+  "placeholderEvents": {
+    "JRP2025": [
+      {
+        "eventType": "LvRating",
+        "discipline": "LV-Wertung",
+        "ageGroup": "LV-Wertung",
+        "gender": "mixed",
+        "round": "Ergebnis"
+      }
+    ],
+    "JRP2026": [
+      {
+        "eventType": "LvRating",
+        "discipline": "LV-Wertung",
+        "ageGroup": "LV-Wertung",
+        "gender": "mixed",
+        "round": "Ergebnis"
+      }
+    ]
+  },
   "eventTypes": {
     "0100000:730": "Individual",
     "0100000:731": "Team",

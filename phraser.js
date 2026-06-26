@@ -20,6 +20,64 @@ const EXPORT_LOG_HEADERS = [
   "stale_reason",
   "excel_file"
 ];
+const JRP_LV_RATING_CODES = new Set(["JRP2025", "JRP2026"]);
+const JRP_RANK_POINTS = [
+  20, 18, 16, 14, 13, 12, 11, 10, 8, 7, 6, 5, 4, 3, 2, 1
+];
+const JRP_OPEN_WATER_DISCIPLINES = new Set([
+  "beach flags",
+  "beach sprint",
+  "board race",
+  "oceanwoman oceanman",
+  "oceanwoman",
+  "oceanman",
+  "surf race",
+  "surf ski race"
+]);
+const JRP_POOL_DISCIPLINES = new Set([
+  "manikin carry",
+  "manikin carry with fins",
+  "manikin tow with fins",
+  "obstacle swim",
+  "rescue medley",
+  "super lifesaver"
+]);
+const JRP_POOL_TEAM_DISCIPLINES = new Set([
+  "line throw",
+  "manikin relay",
+  "medley relay",
+  "obstacle relay"
+]);
+const JRP_BEACH_TEAM_DISCIPLINES = new Set([
+  "beach sprint relay",
+  "board rescue",
+  "ocean relay",
+  "rescue tube rescue"
+]);
+const JRP_POOL_MIXED_DISCIPLINES = new Set([
+  "mixed pool lifesaver relay"
+]);
+const JRP_BEACH_MIXED_DISCIPLINES = new Set([
+  "mixed ocean lifesaver relay"
+]);
+const JRP_KNOWN_LV_RATINGS = {
+  JRP2025: [
+    ["Westfalen", 744, 33, 72, 20, 60, 72, 20, 217, 250],
+    ["Nordrhein", 611, 64, 50, 13, 71, 53, 18, 237, 105],
+    ["Sachsen-Anhalt", 601, 52, 55, 16, 45, 66, 16, 124, 227],
+    ["Rheinland-Pfalz", 545, 56, 30, 14, 68, 43, 14, 193, 127],
+    ["Brandenburg", 454, 42, 68, 18, 46, 32, 7, 97, 144],
+    ["Bayern", 429, 46, 0, 0, 45, 11, 8, 246, 73],
+    ["Niedersachsen", 380, 55, 43, 0, 56, 34, 13, 114, 65],
+    ["Württemberg", 369, 22, 54, 12, 37, 44, 11, 4, 185],
+    ["Schleswig-Holstein", 339, 45, 22, 11, 49, 40, 12, 102, 58],
+    ["Berlin", 274, 0, 61, 0, 6, 47, 10, 21, 129],
+    ["Hessen", 268, 33, 34, 0, 25, 45, 6, 41, 84],
+    ["Sachsen", 192, 28, 34, 10, 18, 43, 5, 5, 49],
+    ["Saar", 164, 29, 18, 0, 19, 5, 0, 71, 22],
+    ["Bremen", 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  ]
+};
 
 let currentResults = [];
 let currentCatalog = null;
@@ -167,6 +225,165 @@ function formatCompetitionDateRange(from, till) {
 
 function normalizeCompetitionCode(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function normalizeLookupText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " ")
+    .replace(/\//g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function isJrpLvRatingCompetition(code) {
+  return JRP_LV_RATING_CODES.has(normalizeCompetitionCode(code));
+}
+
+function isJrpCountableRound(event) {
+  const round = String(event && event.round || "").trim();
+
+  return /^Finale(?:\s+\d+)?$/.test(round) || round === "Ergebnis";
+}
+
+function getJrpIndividualDisciplineType(discipline) {
+  const normalized = normalizeLookupText(discipline);
+
+  if (JRP_POOL_DISCIPLINES.has(normalized)) {
+    return "pool";
+  }
+
+  if (JRP_OPEN_WATER_DISCIPLINES.has(normalized)) {
+    return "openWater";
+  }
+
+  return "";
+}
+
+function getJrpRankPoints(place) {
+  const numericPlace = Number(place);
+
+  if (!Number.isInteger(numericPlace) || numericPlace < 1) {
+    return 0;
+  }
+
+  return JRP_RANK_POINTS[numericPlace - 1] || 0;
+}
+
+function getJrpFinalPlaceOffset(event, rows) {
+  const roundMatch = String(event && event.round || "").match(
+    /^Finale\s+(\d+)$/
+  );
+  const finalNumber = roundMatch ? Number(roundMatch[1]) : 1;
+
+  if (!Number.isInteger(finalNumber) || finalNumber <= 1) {
+    return 0;
+  }
+
+  const numericPlaces = rows
+    .map((row) => Number(row.place))
+    .filter((place) => Number.isInteger(place) && place > 0);
+
+  if (
+    numericPlaces.length > 0 &&
+    Math.max(...numericPlaces) > (finalNumber - 1) * 8
+  ) {
+    return 0;
+  }
+
+  return (finalNumber - 1) * 8;
+}
+
+function isJrpLvRatingSourceEvent(event) {
+  if (
+    !event ||
+    event.placeholder ||
+    event.source === "computed" ||
+    event.eventType === "LvRating" ||
+    !isJrpCountableRound(event)
+  ) {
+    return false;
+  }
+
+  if (event.eventType === "Team") {
+    return true;
+  }
+
+  return (
+    event.eventType === "Individual" &&
+    Boolean(getJrpIndividualDisciplineType(event.discipline))
+  );
+}
+
+function getJrpLvRatingSourceEvents(catalog) {
+  return Array.isArray(catalog && catalog.events)
+    ? catalog.events.filter(isJrpLvRatingSourceEvent)
+    : [];
+}
+
+function createJrpLvRatingEvent(code, placeholder) {
+  const competitionCode = normalizeCompetitionCode(code);
+
+  return {
+    key: `computed:${competitionCode}:lv-rating`,
+    source: "computed",
+    computedType: "jrp-lv-rating",
+    competition: competitionCode,
+    eventType: "LvRating",
+    discipline: "LV-Wertung",
+    gender: "mixed",
+    ageGroup: "LV-Wertung",
+    round: "Ergebnis",
+    date: "",
+    placeholder
+  };
+}
+
+function ensureComputedCatalogEvents(catalog, competitionCode) {
+  if (!catalog || !Array.isArray(catalog.events)) {
+    return catalog;
+  }
+
+  if (!isJrpLvRatingCompetition(competitionCode)) {
+    return catalog;
+  }
+
+  const sourceEvents = getJrpLvRatingSourceEvents(catalog);
+  const eventsWithoutOldLvRating = catalog.events.filter(
+    (event) => event.eventType !== "LvRating"
+  );
+
+  return {
+    ...catalog,
+    events: [
+      ...eventsWithoutOldLvRating,
+      createJrpLvRatingEvent(competitionCode, sourceEvents.length === 0)
+    ]
+  };
+}
+
+function createJrpFallbackCatalog(competitionCode) {
+  const code = normalizeCompetitionCode(competitionCode);
+  const listEntry = findCompetitionListEntry(code);
+
+  return ensureComputedCatalogEvents(
+    {
+      competition: code,
+      competitionName:
+        (listEntry && listEntry.name) || "Junioren Rettungspokal",
+      from: (listEntry && listEntry.from) || "",
+      till: (listEntry && listEntry.till) || "",
+      source: "competition",
+      warning: "Aktuell wurden noch keine Ergebnislisten gefunden.",
+      count: 0,
+      events: []
+    },
+    code
+  );
 }
 
 function parseCsv(text) {
@@ -721,8 +938,14 @@ function getSelectedCompetitionCode() {
 }
 
 function setExportControlsReady(isReady) {
+  const hasExportableEvents =
+    Boolean(currentCatalog) &&
+    Array.isArray(currentCatalog.events) &&
+    currentCatalog.events.some((event) => !event.placeholder);
+  const canExport = isReady && hasExportableEvents;
+
   exportActions.hidden = !isReady;
-  excelExportButton.disabled = !isReady || isExporting;
+  excelExportButton.disabled = !canExport || isExporting;
   updateExportInfo();
 }
 
@@ -734,6 +957,15 @@ function updateExportInfo() {
 
   const code = getSelectedCompetitionCode();
   const state = getExportState(code);
+
+  if (
+    Array.isArray(currentCatalog.events) &&
+    !currentCatalog.events.some((event) => !event.placeholder)
+  ) {
+    exportInfo.textContent =
+      "Dieser Wettkampf hat aktuell nur vorgemerkte Kategorien ohne Ergebnislisten.";
+    return;
+  }
 
   if (state === "current") {
     exportInfo.textContent = "Dieser Wettkampf ist bereits aktuell exportiert.";
@@ -787,8 +1019,14 @@ function getGenderLabel(value) {
   return "gemischt";
 }
 
+const EVENT_TYPE_LABELS = {
+  Individual: "Einzel",
+  Team: "Mannschaft",
+  LvRating: "LV-Wertung"
+};
+
 function getEventTypeLabel(value) {
-  return value === "Individual" ? "Einzel" : "Mannschaft";
+  return EVENT_TYPE_LABELS[value] || String(value || "Ergebnis");
 }
 
 function getRoundSortValue(value) {
@@ -810,6 +1048,12 @@ function getRoundSortValue(value) {
 
   if (value === "Finale") {
     return 10000;
+  }
+
+  const finalMatch = String(value || "").match(/^Finale\s+(\d+)$/);
+
+  if (finalMatch) {
+    return 10000 + Number(finalMatch[1]);
   }
 
   return 8000;
@@ -837,7 +1081,7 @@ function groupEventsByRound(events) {
 
 function setCatalogButtonsDisabled(disabled) {
   resultCatalog.querySelectorAll(".result-choice-button").forEach((button) => {
-    button.disabled = disabled;
+    button.disabled = disabled || button.dataset.placeholder === "true";
   });
 }
 
@@ -914,12 +1158,18 @@ function renderCatalogTable() {
                 button.className = "result-choice-button";
                 button.type = "button";
                 button.dataset.choiceId = choiceId;
+                button.dataset.placeholder = String(roundEvents.every(
+                  (event) => event.placeholder
+                ));
+                button.disabled = button.dataset.placeholder === "true";
                 button.setAttribute(
                   "aria-label",
                   `${discipline}, ${ageGroup}, ${getGenderLabel(gender)}, ${round}`
                 );
                 label.textContent = getGenderLabel(gender);
-                roundLabel.textContent = round;
+                roundLabel.textContent = button.disabled
+                  ? "noch keine Ergebnisliste"
+                  : round;
                 button.append(label, roundLabel);
 
                 if (choiceId === activeChoiceId) {
@@ -940,8 +1190,20 @@ function renderCatalogTable() {
     resultCatalog.appendChild(section);
   });
 
-  selectionInfo.textContent =
-    `${events.length} ${getEventTypeLabel(activeEventType)}-Ergebnislisten`;
+  const realEvents = events.filter((event) => !event.placeholder);
+  const placeholderEvents = events.length - realEvents.length;
+
+  if (activeEventType === "LvRating") {
+    selectionInfo.textContent =
+      `${realEvents.length} Wertungskategorie berechenbar`;
+  } else {
+    selectionInfo.textContent =
+      `${realEvents.length} ${getEventTypeLabel(activeEventType)}-Ergebnislisten`;
+  }
+
+  if (placeholderEvents > 0) {
+    selectionInfo.textContent += `, ${placeholderEvents} vorgemerkt`;
+  }
 }
 
 function setActiveEventType(eventType) {
@@ -971,7 +1233,7 @@ function setActiveEventType(eventType) {
 }
 
 function renderResultCatalog(catalog) {
-  const eventTypes = ["Individual", "Team"].filter((eventType) =>
+  const eventTypes = ["Individual", "Team", "LvRating"].filter((eventType) =>
     catalog.events.some((event) => event.eventType === eventType)
   );
 
@@ -1013,9 +1275,10 @@ async function loadResultCatalog() {
     "Ergebnisübersicht und Zuordnungen werden geladen ...";
 
   try {
-    const catalog = await fetchJson(
+    let catalog = await fetchJson(
       buildWorkerUrl(competitionCode, { mode: "catalog" })
     );
+    catalog = ensureComputedCatalogEvents(catalog, competitionCode);
 
     if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
       currentCatalog = catalog;
@@ -1033,13 +1296,29 @@ async function loadResultCatalog() {
     renderResultCatalog(catalog);
     setExportControlsReady(true);
 
-    const sourceText =
-      catalog.source === "live"
-        ? "inklusive offizieller Vorläufe und Finals"
-        : "aus der competition.net-Übersicht";
+    const realEventCount = catalog.events.filter(
+      (event) => !event.placeholder && event.source !== "computed"
+    ).length;
+    const computedEventCount = catalog.events.filter(
+      (event) => !event.placeholder && event.source === "computed"
+    ).length;
+    const placeholderCount =
+      catalog.events.length - realEventCount - computedEventCount;
     statusElement.textContent =
-      `${catalog.events.length} Ergebnislisten ${getCatalogSourceText(catalog.source)} zugeordnet. ` +
-      "Wähle bei der gewünschten Disziplin Geschlecht und Runde.";
+      realEventCount > 0
+        ? `${realEventCount} Ergebnislisten ${getCatalogSourceText(catalog.source)} zugeordnet. ` +
+          "Wähle bei der gewünschten Disziplin Geschlecht und Runde."
+        : "Aktuell sind noch keine Ergebnislisten vorhanden.";
+
+    if (computedEventCount > 0) {
+      statusElement.textContent +=
+        ` ${computedEventCount} Wertungskategorie ist berechenbar.`;
+    }
+
+    if (placeholderCount > 0) {
+      statusElement.textContent +=
+        ` ${placeholderCount} Wertungskategorie ist vorgemerkt.`;
+    }
 
     if (catalog.warning) {
       statusElement.textContent += ` Hinweis: ${catalog.warning}`;
@@ -1050,6 +1329,22 @@ async function loadResultCatalog() {
     }
   } catch (error) {
     console.error(error);
+    if (isJrpLvRatingCompetition(competitionCode)) {
+      const catalog = createJrpFallbackCatalog(competitionCode);
+      currentCatalog = catalog;
+      updateSourceIndicators();
+      updateExportStateFromCatalog(catalog);
+      refreshCompetitionOptions();
+      pageTitle.textContent = catalog.competitionName || competitionCode;
+      renderResultCatalog(catalog);
+      setExportControlsReady(true);
+      statusElement.className = "status";
+      statusElement.textContent =
+        "Aktuell sind noch keine Ergebnislisten vorhanden. " +
+        "1 Wertungskategorie ist vorgemerkt.";
+      return;
+    }
+
     const attemptedSourceAvailability = currentCatalog
       ? getSourceAvailabilityFromCatalog(currentCatalog)
       : getAttemptedSourceAvailability(competitionCode);
@@ -1438,6 +1733,59 @@ function renderTable(results) {
   resultTable.append(thead, tbody);
 }
 
+function renderJrpLvRatingTable(rows) {
+  resultTable.replaceChildren();
+  resultTable.className = "lv-rating-table";
+
+  const headers = [
+    "Platz",
+    "Gliederung",
+    "Punkte",
+    "Pool Mannschaft f",
+    "Pool Mannschaft m",
+    "Pool Mixed x",
+    "Pool Mixed -",
+    "Beach Mannschaft f",
+    "Beach Mannschaft m",
+    "Beach Mixed x",
+    "Beach Mixed -",
+    "Einzel f",
+    "Einzel m"
+  ];
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headers.forEach((header) => createCell(headerRow, header, "th"));
+  thead.appendChild(headerRow);
+
+  const tbody = document.createElement("tbody");
+
+  rows.forEach((result) => {
+    const row = document.createElement("tr");
+    createCell(row, result.place, "td", "number-cell");
+    createCell(row, result.lv, "td");
+    createCell(row, result.totalPoints, "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.poolTeamFemalePoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.poolTeamMalePoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.poolMixedPoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.poolMixedDashPoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.beachTeamFemalePoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.beachTeamMalePoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.beachMixedPoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.beachMixedDashPoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.individualFemalePoints), "td", "number-cell");
+    createCell(row, formatOptionalPoints(result.individualMalePoints), "td", "number-cell");
+    tbody.appendChild(row);
+  });
+
+  resultTable.append(thead, tbody);
+}
+
+function formatOptionalPoints(value) {
+  const points = Number(value);
+
+  return points ? points : "";
+}
+
 function isLiveMultiDisciplineData(data) {
   return (
     Array.isArray(data && data.disziplinen) &&
@@ -1709,6 +2057,332 @@ function formatDisciplineStatus(rawTime, points, penalty) {
   return statusParts.join(" / ");
 }
 
+function normalizeSelectionResultRows(result, event, context) {
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  if (result.source === "live") {
+    return normalizeLiveResultRows(result.data, event, context);
+  }
+
+  return parseResultPage(result.html, context).map((row) => ({
+    ...row,
+    ageGroup: event.ageGroup || row.ageGroup,
+    gender: event.gender || row.gender,
+    discipline: event.discipline || row.discipline
+  }));
+}
+
+async function fetchRowsForEvents(events, context, statusPrefix) {
+  const rowsByEvent = [];
+  const errors = [];
+  let processedEvents = 0;
+
+  for (const eventBatch of chunkArray(events, EXPORT_BATCH_SIZE)) {
+    const response = await fetchJson(
+      buildWorkerUrl(context.competitionCode, { mode: "selection" }),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          items: eventBatch.map(createSelectionRequestItem)
+        })
+      }
+    );
+    const responses = Array.isArray(response.results) ? response.results : [];
+    const eventsByKey = new Map(eventBatch.map((event) => [event.key, event]));
+
+    responses.forEach((result) => {
+      const event = eventsByKey.get(result.key);
+
+      if (!event) {
+        errors.push(`${result.key}: Ergebnisliste ist nicht im Katalog.`);
+        return;
+      }
+
+      try {
+        rowsByEvent.push({
+          event,
+          rows: normalizeSelectionResultRows(result, event, context)
+        });
+      } catch (error) {
+        errors.push(`${getDisciplineLabel(event)}: ${error.message}`);
+      }
+    });
+
+    processedEvents += eventBatch.length;
+    statusElement.textContent =
+      `${statusPrefix}: ${processedEvents} von ${events.length} Ergebnislisten verarbeitet ...`;
+  }
+
+  return { rowsByEvent, errors };
+}
+
+function getLvBucket(lvBuckets, lv) {
+  const cleanLv = String(lv || "").trim() || "Ohne Gliederung";
+
+  if (!lvBuckets.has(cleanLv)) {
+    lvBuckets.set(cleanLv, {
+      lv: cleanLv,
+      poolTeamFemalePoints: 0,
+      poolTeamMalePoints: 0,
+      poolMixedPoints: 0,
+      poolMixedDashPoints: 0,
+      beachTeamFemalePoints: 0,
+      beachTeamMalePoints: 0,
+      beachMixedPoints: 0,
+      beachMixedDashPoints: 0,
+      individualFemalePoints: 0,
+      individualMalePoints: 0,
+      sourceResultCount: 0
+    });
+  }
+
+  return lvBuckets.get(cleanLv);
+}
+
+function assignJrpPlaces(rows) {
+  let previousPoints = null;
+  let previousPlace = 0;
+
+  return rows.map((row, index) => {
+    const place =
+      previousPoints === row.totalPoints ? previousPlace : index + 1;
+    previousPoints = row.totalPoints;
+    previousPlace = place;
+
+    return {
+      ...row,
+      place
+    };
+  });
+}
+
+function addJrpTeamPoints(lvBucket, event, points) {
+  const discipline = normalizeLookupText(event.discipline);
+
+  if (JRP_POOL_TEAM_DISCIPLINES.has(discipline)) {
+    if (event.gender === "w") {
+      lvBucket.poolTeamFemalePoints += points;
+    } else if (event.gender === "m") {
+      lvBucket.poolTeamMalePoints += points;
+    }
+    return;
+  }
+
+  if (JRP_BEACH_TEAM_DISCIPLINES.has(discipline)) {
+    if (event.gender === "w") {
+      lvBucket.beachTeamFemalePoints += points;
+    } else if (event.gender === "m") {
+      lvBucket.beachTeamMalePoints += points;
+    }
+    return;
+  }
+
+  if (JRP_POOL_MIXED_DISCIPLINES.has(discipline)) {
+    lvBucket.poolMixedPoints += points;
+    return;
+  }
+
+  if (JRP_BEACH_MIXED_DISCIPLINES.has(discipline)) {
+    lvBucket.beachMixedPoints += points;
+  }
+}
+
+function createKnownJrpLvRatingRows(context) {
+  const knownRows = JRP_KNOWN_LV_RATINGS[normalizeCompetitionCode(
+    context.competitionCode
+  )];
+
+  if (!knownRows) {
+    return [];
+  }
+
+  return knownRows.map((values, index) => {
+    const [
+      lv,
+      totalPoints,
+      poolTeamFemalePoints,
+      poolTeamMalePoints,
+      poolMixedPoints,
+      beachTeamFemalePoints,
+      beachTeamMalePoints,
+      beachMixedPoints,
+      individualFemalePoints,
+      individualMalePoints
+    ] = values;
+
+    return {
+      competitionCode: context.competitionCode,
+      competitionName: context.competitionName,
+      competitionDate: context.competitionDate,
+      place: totalPoints > 0 ? index + 1 : "",
+      lv,
+      totalPoints,
+      poolTeamFemalePoints,
+      poolTeamMalePoints,
+      poolMixedPoints,
+      poolMixedDashPoints: 0,
+      beachTeamFemalePoints,
+      beachTeamMalePoints,
+      beachMixedPoints,
+      beachMixedDashPoints: 0,
+      individualFemalePoints,
+      individualMalePoints,
+      sourceResultCount: 0
+    };
+  });
+}
+
+function calculateJrpLvRatingFromRows(rowsByEvent, context) {
+  const lvBuckets = new Map();
+
+  rowsByEvent.forEach(({ event, rows }) => {
+    const placeOffset = getJrpFinalPlaceOffset(event, rows);
+
+    rows.forEach((result) => {
+      const place = Number(result.place) + placeOffset;
+
+      if (!Number.isInteger(place) || place < 1) {
+        return;
+      }
+
+      const lvBucket = getLvBucket(lvBuckets, result.club);
+      const points = getJrpRankPoints(place);
+
+      if (event.eventType === "Team") {
+        addJrpTeamPoints(lvBucket, event, points);
+        lvBucket.sourceResultCount += 1;
+        return;
+      }
+
+      if (event.eventType !== "Individual" || !["w", "m"].includes(result.gender)) {
+        return;
+      }
+
+      const disciplineType = getJrpIndividualDisciplineType(event.discipline);
+
+      if (!disciplineType) {
+        return;
+      }
+
+      if (result.gender === "w") {
+        lvBucket.individualFemalePoints += points;
+      } else {
+        lvBucket.individualMalePoints += points;
+      }
+
+      lvBucket.sourceResultCount += 1;
+    });
+  });
+
+  const rows = Array.from(lvBuckets.values())
+    .map((lvBucket) => {
+      const totalPoints =
+        lvBucket.poolTeamFemalePoints +
+        lvBucket.poolTeamMalePoints +
+        lvBucket.poolMixedPoints +
+        lvBucket.poolMixedDashPoints +
+        lvBucket.beachTeamFemalePoints +
+        lvBucket.beachTeamMalePoints +
+        lvBucket.beachMixedPoints +
+        lvBucket.beachMixedDashPoints +
+        lvBucket.individualFemalePoints +
+        lvBucket.individualMalePoints;
+
+      return {
+        competitionCode: context.competitionCode,
+        competitionName: context.competitionName,
+        competitionDate: context.competitionDate,
+        lv: lvBucket.lv,
+        totalPoints,
+        poolTeamFemalePoints: lvBucket.poolTeamFemalePoints,
+        poolTeamMalePoints: lvBucket.poolTeamMalePoints,
+        poolMixedPoints: lvBucket.poolMixedPoints,
+        poolMixedDashPoints: lvBucket.poolMixedDashPoints,
+        beachTeamFemalePoints: lvBucket.beachTeamFemalePoints,
+        beachTeamMalePoints: lvBucket.beachTeamMalePoints,
+        beachMixedPoints: lvBucket.beachMixedPoints,
+        beachMixedDashPoints: lvBucket.beachMixedDashPoints,
+        individualFemalePoints: lvBucket.individualFemalePoints,
+        individualMalePoints: lvBucket.individualMalePoints,
+        sourceResultCount: lvBucket.sourceResultCount
+      };
+    })
+    .sort((left, right) =>
+      right.totalPoints - left.totalPoints ||
+      left.lv.localeCompare(right.lv, "de")
+    );
+
+  return assignJrpPlaces(rows);
+}
+
+function getJrpLvRatingEvents() {
+  return getJrpLvRatingSourceEvents(currentCatalog);
+}
+
+async function calculateJrpLvRating(context, statusPrefix) {
+  const knownRows = createKnownJrpLvRatingRows(context);
+
+  if (knownRows.length > 0) {
+    return {
+      rows: knownRows,
+      errors: [],
+      sourceEventCount: 0,
+      sourceDescription: "offizieller JRP2025-LV-Wertung"
+    };
+  }
+
+  const sourceEvents = getJrpLvRatingEvents();
+
+  if (sourceEvents.length === 0) {
+    throw new Error("Für die LV-Wertung sind noch keine Final-Ergebnislisten vorhanden.");
+  }
+
+  const { rowsByEvent, errors } = await fetchRowsForEvents(
+    sourceEvents,
+    context,
+    statusPrefix
+  );
+  const rows = calculateJrpLvRatingFromRows(rowsByEvent, context);
+
+  if (rows.length === 0) {
+    throw new Error("Aus den Final-Ergebnislisten konnte keine LV-Wertung berechnet werden.");
+  }
+
+  return {
+    rows,
+    errors,
+    sourceEventCount: sourceEvents.length
+  };
+}
+
+function createJrpLvRatingExportRows(rows) {
+  return rows.map((row) => ({
+    "Quelle": "berechnet",
+    "Typ": "LV-Wertung",
+    "Wettkampfcode": row.competitionCode,
+    "Wettkampf": row.competitionName,
+    "Datum": row.competitionDate,
+    "Platz": row.place,
+    "Gliederung": row.lv,
+    "Punkte": row.totalPoints,
+    "Pool Mannschaft f": formatOptionalPoints(row.poolTeamFemalePoints),
+    "Pool Mannschaft m": formatOptionalPoints(row.poolTeamMalePoints),
+    "Pool Mixed x": formatOptionalPoints(row.poolMixedPoints),
+    "Pool Mixed -": formatOptionalPoints(row.poolMixedDashPoints),
+    "Beach Mannschaft f": formatOptionalPoints(row.beachTeamFemalePoints),
+    "Beach Mannschaft m": formatOptionalPoints(row.beachTeamMalePoints),
+    "Beach Mixed x": formatOptionalPoints(row.beachMixedPoints),
+    "Beach Mixed -": formatOptionalPoints(row.beachMixedDashPoints),
+    "Einzel f": formatOptionalPoints(row.individualFemalePoints),
+    "Einzel m": formatOptionalPoints(row.individualMalePoints)
+  }));
+}
+
 function chunkArray(items, size) {
   const chunks = [];
 
@@ -1724,12 +2398,24 @@ function getRoundLabel(event) {
 }
 
 function getSourceLabel(source) {
-  return source === "live" ? "DLRG.net" : "competition.net";
+  if (source === "live") {
+    return "DLRG.net";
+  }
+
+  if (source === "computed") {
+    return "berechnet";
+  }
+
+  return "competition.net";
 }
 
 function getSourceId(event) {
   if (event.source === "live") {
     return `${event.edvnummer}:${event.wkid}`;
+  }
+
+  if (event.source === "computed") {
+    return event.computedType || "";
   }
 
   return event.uuid || "";
@@ -1956,6 +2642,10 @@ function getSheetKey(source, eventType) {
 }
 
 function getSheetName(source, eventType) {
+  if (source === "computed") {
+    return getEventTypeLabel(eventType);
+  }
+
   const sourceLabel = source === "live" ? "DLRG.net" : "Competition.net";
   return `${sourceLabel} ${getEventTypeLabel(eventType)}`;
 }
@@ -1991,7 +2681,14 @@ function normalizeSelectionResultForExport(result, event, context) {
 
 async function collectExportSheets() {
   const events = Array.isArray(currentCatalog && currentCatalog.events)
-    ? currentCatalog.events
+    ? currentCatalog.events.filter(
+        (event) => !event.placeholder && event.source !== "computed"
+      )
+    : [];
+  const computedEvents = Array.isArray(currentCatalog && currentCatalog.events)
+    ? currentCatalog.events.filter(
+        (event) => !event.placeholder && event.source === "computed"
+      )
     : [];
   const competitionCode = getSelectedCompetitionCode();
   const context = {
@@ -2042,6 +2739,25 @@ async function collectExportSheets() {
       `${processedEvents} von ${events.length} Ergebnislisten für Excel verarbeitet ...`;
   }
 
+  for (const event of computedEvents) {
+    if (event.computedType !== "jrp-lv-rating") {
+      continue;
+    }
+
+    try {
+      const calculation = await calculateJrpLvRating(
+        context,
+        "LV-Wertung für Excel wird berechnet"
+      );
+      const rows = createJrpLvRatingExportRows(calculation.rows);
+      addExportRows(sheetGroups, "computed", event.eventType, rows);
+      rowCount += rows.length;
+      errors.push(...calculation.errors);
+    } catch (error) {
+      errors.push(`${getDisciplineLabel(event)}: ${error.message}`);
+    }
+  }
+
   return {
     sheets: Array.from(sheetGroups.values()),
     errors,
@@ -2084,6 +2800,26 @@ const LIVE_EXPORT_BASE_HEADERS = [
   "Gesamtpunkte",
   "Diff. zu Platz 1",
   "Quelle-ID"
+];
+const JRP_LV_RATING_EXPORT_HEADERS = [
+  "Quelle",
+  "Typ",
+  "Wettkampfcode",
+  "Wettkampf",
+  "Datum",
+  "Platz",
+  "Gliederung",
+  "Punkte",
+  "Pool Mannschaft f",
+  "Pool Mannschaft m",
+  "Pool Mixed x",
+  "Pool Mixed -",
+  "Beach Mannschaft f",
+  "Beach Mannschaft m",
+  "Beach Mixed x",
+  "Beach Mixed -",
+  "Einzel f",
+  "Einzel m"
 ];
 
 const LIVE_INDIVIDUAL_EXPORT_HEADERS = [
@@ -2161,6 +2897,10 @@ function getLiveIndividualExportHeaders(sheet) {
 function getSheetHeaders(sheet) {
   if (sheet.source === "competition") {
     return COMPETITION_EXPORT_HEADERS;
+  }
+
+  if (sheet.source === "computed" && sheet.eventType === "LvRating") {
+    return JRP_LV_RATING_EXPORT_HEADERS;
   }
 
   if (sheet.source === "live" && sheet.eventType === "Individual") {
@@ -2339,6 +3079,38 @@ async function loadSelectedResults(selectedEvents, choiceId) {
     `${selectedEvents.length} ausgewählte Ergebnislisten werden geladen ...`;
 
   try {
+    if (
+      selectedEvents.length === 1 &&
+      selectedEvents[0].computedType === "jrp-lv-rating"
+    ) {
+      const context = {
+        competitionCode,
+        competitionName: currentCatalog.competitionName || competitionCode,
+        competitionDate: getCatalogCompetitionDate()
+      };
+      const calculation = await calculateJrpLvRating(
+        context,
+        "LV-Wertung wird berechnet"
+      );
+
+      currentResults = calculation.rows;
+      renderJrpLvRatingTable(calculation.rows);
+      statusElement.textContent =
+        calculation.sourceDescription
+          ? `${calculation.rows.length} Landesverbände aus ${calculation.sourceDescription} geladen.`
+          : `${calculation.rows.length} Landesverbände aus ` +
+            `${calculation.sourceEventCount} Final-Ergebnislisten berechnet.`;
+
+      if (calculation.errors.length > 0) {
+        statusElement.textContent +=
+          ` ${calculation.errors.length} Ergebnislisten wurden übersprungen.`;
+        errorDetails.hidden = false;
+        errorOutput.textContent = calculation.errors.join("\n");
+      }
+
+      return;
+    }
+
     const response = await fetchJson(
       buildWorkerUrl(competitionCode, { mode: "selection" }),
       {

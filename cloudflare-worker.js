@@ -493,6 +493,15 @@ async function loadCompetitionCatalog(competition) {
     }
   }
 
+  const placeholderEvents = getKnownPlaceholderEvents(
+    liveSourceConfig,
+    competition
+  );
+
+  if (placeholderEvents.length > 0) {
+    events = mergePlaceholderEvents(events, placeholderEvents);
+  }
+
   if (events.length === 0) {
     if (knownLiveCompetition) {
       warnings.push("Die Live-Ergebnisquelle enthält aktuell noch keine Ergebnislisten.");
@@ -602,6 +611,7 @@ function createEmptyLiveSourceConfig() {
     aliases: {},
     resultPages: {},
     references: {},
+    placeholderEvents: {},
     eventTypes: {},
     warning: ""
   };
@@ -638,12 +648,26 @@ function normalizeLiveSourceConfig(config) {
 
   if (config && config.eventTypes && typeof config.eventTypes === "object") {
     Object.entries(config.eventTypes).forEach(([key, value]) => {
-      const normalizedType =
-        String(value || "").toLowerCase() === "individual"
-          ? "Individual"
-          : "Team";
+      output.eventTypes[String(key || "").trim()] =
+        normalizeEventType(value, "Team");
+    });
+  }
 
-      output.eventTypes[String(key || "").trim()] = normalizedType;
+  if (
+    config &&
+    config.placeholderEvents &&
+    typeof config.placeholderEvents === "object"
+  ) {
+    Object.entries(config.placeholderEvents).forEach(([code, events]) => {
+      const acronym = String(code || "").trim().toUpperCase();
+
+      if (!acronym || !Array.isArray(events)) {
+        return;
+      }
+
+      output.placeholderEvents[acronym] = events
+        .map(normalizePlaceholderEvent)
+        .filter(Boolean);
     });
   }
 
@@ -673,6 +697,31 @@ function normalizeLiveSourceConfig(config) {
   }
 
   return output;
+}
+
+function normalizePlaceholderEvent(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const eventType = normalizeEventType(event.eventType, "Team");
+  const discipline = String(
+    event.discipline || (eventType === "LvRating" ? "LV-Wertung" : "Ergebnis")
+  ).trim();
+  const ageGroup = String(event.ageGroup || event.agegroup || discipline)
+    .trim();
+
+  return {
+    eventType,
+    discipline,
+    gender: normalizeGender(event.gender),
+    ageGroup,
+    round: normalizeLiveCategoryRound(event.round) ||
+      normalizeCompetitionRound({ type: event.round }) ||
+      "Ergebnis",
+    date: normalizeDate(event.date),
+    placeholder: true
+  };
 }
 
 function getKnownLiveResultPages(liveSourceConfig, competition) {
@@ -724,6 +773,46 @@ function getKnownLiveReferences(liveSourceConfig, competition) {
   return new Set(liveSourceConfig.references[acronym] || []);
 }
 
+function getKnownPlaceholderEvents(liveSourceConfig, competition) {
+  const acronym = resolveCompetitionAlias(liveSourceConfig, competition);
+  const placeholders = liveSourceConfig.placeholderEvents[acronym] || [];
+
+  return placeholders.map((event, index) => ({
+    ...event,
+    key: `placeholder:${acronym}:${index}`,
+    source: "placeholder",
+    competition: acronym,
+    placeholder: true
+  }));
+}
+
+function getCatalogEventIdentity(event) {
+  return [
+    event.eventType,
+    event.ageGroup,
+    event.discipline,
+    event.gender,
+    event.round
+  ].map((value) => String(value || "")).join("\u001f");
+}
+
+function mergePlaceholderEvents(events, placeholders) {
+  const realEventIdentities = new Set(
+    events
+      .filter((event) => !event.placeholder)
+      .map(getCatalogEventIdentity)
+  );
+  const merged = [...events];
+
+  placeholders.forEach((event) => {
+    if (!realEventIdentities.has(getCatalogEventIdentity(event))) {
+      merged.push(event);
+    }
+  });
+
+  return dedupeCatalogEvents(merged);
+}
+
 function dedupeValues(values) {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -744,24 +833,67 @@ function normalizeCompetitionEvents(events, competitionCode) {
     .map((event) => {
       const uuid = String(event.id).toLowerCase();
       const cleanCompetitionCode = String(competitionCode || "").trim();
+      const eventType = inferCompetitionEventType(event);
+      const discipline = String(
+        event.discipline || (eventType === "LvRating" ? "LV-Wertung" : "")
+      ).trim();
+      const ageGroup = String(
+        event.agegroup || (eventType === "LvRating" ? "LV-Wertung" : "")
+      ).trim();
 
       return {
         key: `competition:${cleanCompetitionCode}:${uuid}`,
         source: "competition",
         competition: cleanCompetitionCode,
         uuid,
-        eventType:
-          String(event.eventType || "").toLowerCase() === "individual"
-            ? "Individual"
-            : "Team",
-        discipline: String(event.discipline || "").trim(),
+        eventType,
+        discipline,
         gender: normalizeGender(event.gender),
-        ageGroup: String(event.agegroup || "").trim(),
+        ageGroup,
         round: normalizeCompetitionRound(event.round),
         date: normalizeDate(event.date)
       };
     })
     .filter((event) => event.discipline);
+}
+
+function normalizeEventType(value, fallback = "Team") {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (/^(?:individual|einzel)\b/.test(normalized)) {
+    return "Individual";
+  }
+
+  if (/^(?:team|mannschaft|relay|staffel)\b/.test(normalized)) {
+    return "Team";
+  }
+
+  if (
+    /lv[\s_-]*wertung/.test(normalized) ||
+    /landesverbands?wertung/.test(normalized) ||
+    /landesverband/.test(normalized)
+  ) {
+    return "LvRating";
+  }
+
+  return fallback;
+}
+
+function inferCompetitionEventType(event) {
+  const explicitType = normalizeEventType(event && event.eventType, "");
+
+  if (explicitType) {
+    return explicitType;
+  }
+
+  return normalizeEventType(
+    [
+      event && event.discipline,
+      event && event.agegroup,
+      event && event.name
+    ].join(" "),
+    "Team"
+  );
 }
 
 function extractResultDetailsOrFallback(html, competition) {
@@ -810,7 +942,7 @@ function normalizeCompetitionRound(round) {
   }
 
   if (normalized.includes("final")) {
-    return "Finale";
+    return roundNumber > 1 ? `Finale ${roundNumber}` : "Finale";
   }
 
   if (
@@ -1063,7 +1195,10 @@ function normalizeLiveEvents(reference, data, liveSourceConfig) {
   const sourceName = String(data.wkname || "");
   const eventType =
     liveSourceConfig.eventTypes[`${reference.edvnummer}:${reference.wkid}`] ||
-    (/individual|einzel/i.test(sourceName) ? "Individual" : "Team");
+    normalizeEventType(
+      sourceName,
+      /individual|einzel/i.test(sourceName) ? "Individual" : "Team"
+    );
   const round = normalizeLiveRound(sourceName);
   const categories = Array.isArray(data.aks) ? data.aks : [];
 
@@ -1153,23 +1288,16 @@ function parseLiveCategory(ak, eventType, round) {
 }
 
 function getLiveCategoryEventType(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-
-  if (/^(?:einzel|individual)\b/.test(normalized)) {
-    return "Individual";
-  }
-
-  if (/^(?:mannschaft|team|relay|staffel)\b/.test(normalized)) {
-    return "Team";
-  }
-
-  return "";
+  return normalizeEventType(value, "");
 }
 
 function stripLiveCategoryEventType(value) {
   return String(value || "")
     .trim()
-    .replace(/^(?:einzel|individual|mannschaft|team|relay|staffel)\s+/i, "")
+    .replace(
+      /^(?:einzel|individual|mannschaft|team|relay|staffel|lv[\s_-]*wertung|landesverbands?wertung)\s*/i,
+      ""
+    )
     .trim();
 }
 
