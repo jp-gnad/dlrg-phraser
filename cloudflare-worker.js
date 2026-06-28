@@ -447,6 +447,7 @@ async function loadCompetitionCatalog(competition) {
     liveSourceConfig,
     competition
   );
+  const loadedLiveReferenceKeys = new Set();
   const externalResultsUrl = competitionResult.ok
     ? extractExternalResultsUrl(competitionResult.text)
     : "";
@@ -465,6 +466,7 @@ async function loadCompetitionCatalog(competition) {
       const liveEvents = dedupeCatalogEvents(liveCatalogs.flat());
 
       if (liveEvents.length > 0) {
+        addLoadedLiveReferenceKeys(loadedLiveReferenceKeys, liveEvents);
         events = dedupeCatalogEvents([...events, ...liveEvents]);
         source = competitionEvents.length > 0 ? "mixed" : "live";
       }
@@ -475,14 +477,18 @@ async function loadCompetitionCatalog(competition) {
     }
   }
 
-  if (liveResultUrls.length === 0 && liveReferenceFilter.size > 0) {
+  const missingLiveReferences = Array.from(liveReferenceFilter)
+    .filter((referenceKey) => !loadedLiveReferenceKeys.has(referenceKey));
+
+  if (missingLiveReferences.length > 0) {
     try {
       const liveEvents = await loadDirectLiveCatalog(
-        Array.from(liveReferenceFilter),
+        missingLiveReferences,
         liveSourceConfig
       );
 
       if (liveEvents.length > 0) {
+        addLoadedLiveReferenceKeys(loadedLiveReferenceKeys, liveEvents);
         events = dedupeCatalogEvents([...events, ...liveEvents]);
         source = competitionEvents.length > 0 ? "mixed" : "live";
       }
@@ -825,6 +831,14 @@ function dedupeCatalogEvents(events) {
   });
 
   return Array.from(eventsByKey.values());
+}
+
+function addLoadedLiveReferenceKeys(target, events) {
+  events.forEach((event) => {
+    if (event.source === "live" && event.edvnummer && event.wkid) {
+      target.add(`${event.edvnummer}:${event.wkid}`);
+    }
+  });
 }
 
 function normalizeCompetitionEvents(events, competitionCode) {

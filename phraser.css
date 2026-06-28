@@ -490,6 +490,49 @@ h2 {
   background: transparent;
 }
 
+.result-source-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5dd;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.result-source-switcher[hidden] {
+  display: none;
+}
+
+.result-source-switcher span {
+  font-weight: 700;
+}
+
+.result-source-switcher button {
+  padding: 6px 12px;
+  border: 1px solid #0074c8;
+  color: #0068ad;
+  background: #fff;
+}
+
+.result-source-switcher button:hover:not(:disabled),
+.result-source-switcher button.is-selected {
+  color: #fff;
+  background: #0068ad;
+}
+
+.result-source-switcher button:disabled {
+  color: #66717b;
+  border-color: #cbd5dd;
+  background: #eef1f4;
+}
+
+.result-source-switcher small {
+  color: #66717b;
+}
+
 .result-catalog {
   display: grid;
   gap: 24px;

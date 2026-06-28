@@ -32,7 +32,8 @@ const JRP_OPEN_WATER_DISCIPLINES = new Set([
   "oceanwoman",
   "oceanman",
   "surf race",
-  "surf ski race"
+  "surf ski race",
+  "ski race"
 ]);
 const JRP_POOL_DISCIPLINES = new Set([
   "manikin carry",
@@ -60,6 +61,15 @@ const JRP_POOL_MIXED_DISCIPLINES = new Set([
 const JRP_BEACH_MIXED_DISCIPLINES = new Set([
   "mixed ocean lifesaver relay"
 ]);
+const JRP2026_SOURCE_SWITCH_CODE = "JRP2026";
+const JRP2026_LIVE_REFERENCES = [
+  { edvnummer: "1600000", wkid: "899" },
+  { edvnummer: "1600000", wkid: "900" },
+  { edvnummer: "1600000", wkid: "901" },
+  { edvnummer: "1600000", wkid: "902" },
+  { edvnummer: "1600000", wkid: "903" },
+  { edvnummer: "1600000", wkid: "904" }
+];
 const JRP_KNOWN_LV_RATINGS = {
   JRP2025: [
     ["Westfalen", 744, 33, 72, 20, 60, 72, 20, 217, 250],
@@ -83,6 +93,7 @@ let currentResults = [];
 let currentCatalog = null;
 let activeEventType = "";
 let activeChoiceId = "";
+let activeResultSourceMode = "live";
 let catalogChoiceEvents = new Map();
 let competitionListLoaded = false;
 let competitionListCache = [];
@@ -118,6 +129,7 @@ const exportInfo = document.getElementById("exportInfo");
 const resultSelection = document.getElementById("resultSelection");
 const selectionInfo = document.getElementById("selectionInfo");
 const resultTabs = document.getElementById("resultTabs");
+const resultSourceSwitcher = document.getElementById("resultSourceSwitcher");
 const resultCatalog = document.getElementById("resultCatalog");
 const statusElement = document.getElementById("status");
 const resultTable = document.getElementById("resultTable");
@@ -280,6 +292,179 @@ function isJrpLvRatingCompetition(code) {
   return JRP_LV_RATING_CODES.has(normalizeCompetitionCode(code));
 }
 
+function isJrp2026Competition(code) {
+  return normalizeCompetitionCode(code) === JRP2026_SOURCE_SWITCH_CODE;
+}
+
+function getActiveJrp2026SourceMode() {
+  return activeResultSourceMode === "competition" ? "competition" : "live";
+}
+
+function getCatalogEvents(catalog = currentCatalog) {
+  return Array.isArray(catalog && catalog.events) ? catalog.events : [];
+}
+
+function getVisibleCatalogEvents(catalog = currentCatalog) {
+  const events = getCatalogEvents(catalog);
+  const competitionCode =
+    (catalog && catalog.competition) || getSelectedCompetitionCode();
+
+  if (!isJrp2026Competition(competitionCode)) {
+    return events;
+  }
+
+  const sourceMode = getActiveJrp2026SourceMode();
+
+  return events.filter((event) =>
+    event.source === sourceMode ||
+    event.source === "computed"
+  );
+}
+
+function getJrpSourceModeEventCounts(catalog = currentCatalog) {
+  return getCatalogEvents(catalog).reduce(
+    (counts, event) => {
+      if (!event.placeholder && event.source === "competition") {
+        counts.competition += 1;
+      } else if (!event.placeholder && event.source === "live") {
+        counts.live += 1;
+      }
+
+      return counts;
+    },
+    {
+      competition: 0,
+      live: 0
+    }
+  );
+}
+
+function getJrp2026LiveReferenceKey(reference) {
+  return `${reference.edvnummer}:${reference.wkid}`;
+}
+
+function buildLiveDirectUrl(reference) {
+  const url = new URL(WORKER_URL);
+  url.searchParams.set("mode", "live-direct");
+  url.searchParams.set("edvnummer", reference.edvnummer);
+  url.searchParams.set("wkid", reference.wkid);
+
+  return url.toString();
+}
+
+function dedupeEventsByKey(events) {
+  const eventsByKey = new Map();
+
+  events.forEach((event) => {
+    if (event && event.key) {
+      eventsByKey.set(event.key, event);
+    }
+  });
+
+  return Array.from(eventsByKey.values());
+}
+
+async function loadJrp2026DirectLiveEvents(references = JRP2026_LIVE_REFERENCES) {
+  const responses = await Promise.all(
+    references.map(async (reference) => {
+      try {
+        return await fetchJson(buildLiveDirectUrl(reference));
+      } catch (error) {
+        return {
+          error: String(error),
+          reference
+        };
+      }
+    })
+  );
+
+  const errors = [];
+  const events = [];
+
+  responses.forEach((response, index) => {
+    const reference = references[index];
+    const referenceKey = getJrp2026LiveReferenceKey(reference);
+
+    if (response.error) {
+      errors.push(`${referenceKey}: ${response.error}`);
+      return;
+    }
+
+    const responseEvents = Array.isArray(response.events)
+      ? response.events
+      : [];
+
+    responseEvents.forEach((event) => {
+      events.push({
+        ...event,
+        source: "live",
+        competition: JRP2026_SOURCE_SWITCH_CODE,
+        edvnummer: event.edvnummer || reference.edvnummer,
+        wkid: event.wkid || reference.wkid
+      });
+    });
+  });
+
+  return {
+    events,
+    errors
+  };
+}
+
+async function ensureJrp2026DirectLiveCatalog(catalog, competitionCode) {
+  if (!isJrp2026Competition(competitionCode)) {
+    return catalog;
+  }
+
+  const existingLiveReferences = new Set(
+    getCatalogEvents(catalog)
+      .filter((event) => event.source === "live" && event.edvnummer && event.wkid)
+      .map((event) => `${event.edvnummer}:${event.wkid}`)
+  );
+  const missingReferences = JRP2026_LIVE_REFERENCES.filter((reference) =>
+    !existingLiveReferences.has(getJrp2026LiveReferenceKey(reference))
+  );
+
+  if (missingReferences.length === 0) {
+    return catalog;
+  }
+
+  const { events, errors } = await loadJrp2026DirectLiveEvents(
+    missingReferences
+  );
+
+  if (events.length === 0) {
+    return {
+      ...catalog,
+      warning: [
+        catalog.warning,
+        errors.length > 0
+          ? `JRP2026-DLRG.net-Direktquellen konnten nicht geladen werden: ${errors.join("; ")}`
+          : ""
+      ].filter(Boolean).join(" ")
+    };
+  }
+
+  return {
+    ...catalog,
+    source: getCatalogEvents(catalog).some(
+      (event) => event.source === "competition"
+    )
+      ? "mixed"
+      : "live",
+    warning: [
+      catalog.warning,
+      errors.length > 0
+        ? `Einige JRP2026-DLRG.net-Direktquellen wurden übersprungen: ${errors.join("; ")}`
+        : ""
+    ].filter(Boolean).join(" "),
+    events: dedupeEventsByKey([
+      ...getCatalogEvents(catalog),
+      ...events
+    ])
+  };
+}
+
 function isJrpCountableRound(event) {
   const round = String(event && event.round || "").trim();
 
@@ -308,6 +493,32 @@ function getJrpRankPoints(place) {
   }
 
   return JRP_RANK_POINTS[numericPlace - 1] || 0;
+}
+
+function parsePointsValue(value) {
+  const text = String(value === undefined || value === null ? "" : value)
+    .trim();
+
+  if (!text) {
+    return NaN;
+  }
+
+  const normalized = text.includes(",")
+    ? text.replace(/\./g, "").replace(",", ".")
+    : text;
+  const points = Number.parseFloat(normalized);
+
+  return Number.isFinite(points) ? points : NaN;
+}
+
+function getJrpResultPoints(result, place) {
+  const sourcePoints = parsePointsValue(
+    result.rankPoints !== undefined ? result.rankPoints : result.points
+  );
+
+  return Number.isFinite(sourcePoints)
+    ? sourcePoints
+    : getJrpRankPoints(place);
 }
 
 function getJrpFinalPlaceOffset(event, rows) {
@@ -355,10 +566,42 @@ function isJrpLvRatingSourceEvent(event) {
   );
 }
 
+function getAllJrpLvRatingSourceEvents(catalog) {
+  return getCatalogEvents(catalog).filter(isJrpLvRatingSourceEvent);
+}
+
 function getJrpLvRatingSourceEvents(catalog) {
-  return Array.isArray(catalog && catalog.events)
-    ? catalog.events.filter(isJrpLvRatingSourceEvent)
-    : [];
+  const sourceEvents = getAllJrpLvRatingSourceEvents(catalog);
+
+  if (isJrp2026Competition(catalog && catalog.competition)) {
+    const sourceMode = getActiveJrp2026SourceMode();
+    return sourceEvents.filter((event) => event.source === sourceMode);
+  }
+
+  if (isJrpLvRatingCompetition(catalog && catalog.competition)) {
+    const liveEvents = sourceEvents.filter((event) => event.source === "live");
+
+    if (liveEvents.length > 0) {
+      return liveEvents;
+    }
+  }
+
+  return sourceEvents;
+}
+
+function isJrpLvRatingCatalogEvent(event) {
+  if (!event) {
+    return false;
+  }
+
+  return (
+    event.eventType === "LvRating" ||
+    event.computedType === "jrp-lv-rating" ||
+    (
+      normalizeLookupText(event.discipline) === "lv wertung" &&
+      normalizeLookupText(event.ageGroup) === "lv wertung"
+    )
+  );
 }
 
 function createJrpLvRatingEvent(code, placeholder) {
@@ -388,9 +631,9 @@ function ensureComputedCatalogEvents(catalog, competitionCode) {
     return catalog;
   }
 
-  const sourceEvents = getJrpLvRatingSourceEvents(catalog);
+  const sourceEvents = getAllJrpLvRatingSourceEvents(catalog);
   const eventsWithoutOldLvRating = catalog.events.filter(
-    (event) => event.eventType !== "LvRating"
+    (event) => !isJrpLvRatingCatalogEvent(event)
   );
 
   return {
@@ -557,15 +800,20 @@ function createHash(value) {
 }
 
 function createCatalogSignature(catalog) {
-  const events = Array.isArray(catalog && catalog.events)
-    ? catalog.events
-    : [];
+  const events = catalog === currentCatalog
+    ? getVisibleCatalogEvents(catalog)
+    : getCatalogEvents(catalog);
 
   return createHash({
     competitionName: catalog && catalog.competitionName,
     from: catalog && catalog.from,
     till: catalog && catalog.till,
     source: catalog && catalog.source,
+    sourceMode: catalog === currentCatalog && isJrp2026Competition(
+      catalog && catalog.competition
+    )
+      ? getActiveJrp2026SourceMode()
+      : "",
     events: events.map((event) => ({
       source: event.source,
       eventType: event.eventType,
@@ -672,13 +920,14 @@ function applyExportStateClass(option, state) {
 function updateExportStateFromCatalog(catalog) {
   const code = normalizeCompetitionCode(getSelectedCompetitionCode());
   const record = exportedCompetitionRecords.get(code);
+  const events = getVisibleCatalogEvents(catalog);
 
   if (!code || !record) {
     exportStateOverrides.delete(code);
     return "";
   }
 
-  if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
+  if (events.length === 0) {
     exportStateOverrides.set(code, "missing");
     return "Aktuell wurden keine Ergebnislisten gefunden.";
   }
@@ -692,8 +941,12 @@ function updateExportStateFromCatalog(catalog) {
     }
   } else if (
     (record.event_count &&
-      Number(record.event_count) !== catalog.events.length) ||
-    (record.source && record.source !== catalog.source)
+      Number(record.event_count) !== events.length) ||
+    (record.source && record.source !== (
+      isJrp2026Competition(code)
+        ? getActiveJrp2026SourceMode()
+        : catalog.source
+    ))
   ) {
     exportStateOverrides.set(code, "stale");
     return "Die Ergebnisübersicht passt nicht mehr zum alten CSV-Eintrag.";
@@ -745,22 +998,25 @@ function findCompetitionListEntry(code) {
 
 function getSourceAvailabilityFromCatalog(catalog) {
   const source = String(catalog && catalog.source || "");
+  const events = getCatalogEvents(catalog);
+  const hasCompetitionEvents = events.some(
+    (event) => event.source === "competition"
+  );
+  const hasLiveEvents = events.some((event) => event.source === "live");
 
   return {
-    competition: source === "competition" || source === "mixed",
-    live: source === "live" || source === "mixed"
+    competition:
+      hasCompetitionEvents ||
+      source === "competition" ||
+      source === "mixed",
+    live:
+      hasLiveEvents ||
+      source === "live" ||
+      source === "mixed"
   };
 }
 
-function getSourceAvailability(code) {
-  if (
-    currentCatalog &&
-    String(currentCatalog.competition || "").toUpperCase() ===
-      String(code || "").toUpperCase()
-  ) {
-    return getSourceAvailabilityFromCatalog(currentCatalog);
-  }
-
+function getConfiguredSourceAvailability(code) {
   const competition = findCompetitionListEntry(code);
   const sources = competition && competition.sources;
 
@@ -775,6 +1031,30 @@ function getSourceAvailability(code) {
     competition: false,
     live: false
   };
+}
+
+function combineSourceAvailability(left, right) {
+  return {
+    competition: Boolean(left.competition || right.competition),
+    live: Boolean(left.live || right.live)
+  };
+}
+
+function getSourceAvailability(code) {
+  const configuredAvailability = getConfiguredSourceAvailability(code);
+
+  if (
+    currentCatalog &&
+    String(currentCatalog.competition || "").toUpperCase() ===
+      String(code || "").toUpperCase()
+  ) {
+    return combineSourceAvailability(
+      getSourceAvailabilityFromCatalog(currentCatalog),
+      configuredAvailability
+    );
+  }
+
+  return configuredAvailability;
 }
 
 function hasAnySourceAvailability(availability) {
@@ -825,6 +1105,12 @@ function getLiveSourceReferences() {
 
   const references = new Map();
 
+  if (isJrp2026Competition(currentCatalog.competition)) {
+    JRP2026_LIVE_REFERENCES.forEach((reference) => {
+      references.set(getJrp2026LiveReferenceKey(reference), reference);
+    });
+  }
+
   currentCatalog.events.forEach((event) => {
     if (event.source !== "live" || !event.edvnummer || !event.wkid) {
       return;
@@ -862,6 +1148,57 @@ function updateLiveSourceLinks() {
     link.title = "Im Live-ID-Prüfer öffnen";
     liveSourceLinks.appendChild(link);
   });
+}
+
+function updateResultSourceSwitcher() {
+  if (!resultSourceSwitcher || !currentCatalog) {
+    return;
+  }
+
+  const showSwitcher = isJrp2026Competition(currentCatalog.competition);
+  const counts = getJrpSourceModeEventCounts(currentCatalog);
+
+  resultSourceSwitcher.hidden = !showSwitcher;
+
+  if (!showSwitcher) {
+    return;
+  }
+
+  resultSourceSwitcher
+    .querySelectorAll("[data-result-source-mode]")
+    .forEach((button) => {
+      const mode = button.dataset.resultSourceMode;
+      const count = counts[mode] || 0;
+      const selected = mode === getActiveJrp2026SourceMode();
+
+      button.disabled = count === 0;
+      button.classList.toggle("is-selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      button.title = `${count} Ergebnislisten aus ${button.textContent.trim()}`;
+    });
+}
+
+function setJrp2026SourceMode(mode) {
+  const nextMode = mode === "competition" ? "competition" : "live";
+
+  if (nextMode === activeResultSourceMode) {
+    return;
+  }
+
+  activeResultSourceMode = nextMode;
+  activeChoiceId = "";
+  currentResults = [];
+  resultTable.replaceChildren();
+  errorDetails.hidden = true;
+  errorOutput.textContent = "";
+  renderResultCatalog(currentCatalog);
+  updateExportStateFromCatalog(currentCatalog);
+  refreshCompetitionOptions();
+  setExportControlsReady(true);
+  statusElement.className = "status";
+  statusElement.textContent =
+    `JRP2026-Quelle gewechselt: ${getSourceLabel(nextMode)}. ` +
+    "Die Anzeige, der Export und die LV-Wertung nutzen jetzt diese Quelle.";
 }
 
 function refreshCompetitionOptions() {
@@ -1016,8 +1353,7 @@ function getSelectedCompetitionCode() {
 function setExportControlsReady(isReady) {
   const hasExportableEvents =
     Boolean(currentCatalog) &&
-    Array.isArray(currentCatalog.events) &&
-    currentCatalog.events.some((event) => !event.placeholder);
+    getVisibleCatalogEvents(currentCatalog).some((event) => !event.placeholder);
   const canExport = isReady && hasExportableEvents;
 
   exportActions.hidden = !isReady;
@@ -1035,8 +1371,7 @@ function updateExportInfo() {
   const state = getExportState(code);
 
   if (
-    Array.isArray(currentCatalog.events) &&
-    !currentCatalog.events.some((event) => !event.placeholder)
+    !getVisibleCatalogEvents(currentCatalog).some((event) => !event.placeholder)
   ) {
     exportInfo.textContent =
       "Dieser Wettkampf hat aktuell nur vorgemerkte Kategorien ohne Ergebnislisten.";
@@ -1068,8 +1403,10 @@ function resetResultSelection() {
   currentResults = [];
   activeEventType = "";
   activeChoiceId = "";
+  activeResultSourceMode = "live";
   catalogChoiceEvents = new Map();
   resultSelection.hidden = true;
+  resultSourceSwitcher.hidden = true;
   resultCatalog.replaceChildren();
   resultTable.replaceChildren();
   selectionInfo.textContent = "";
@@ -1169,7 +1506,7 @@ function renderCatalogTable() {
     return;
   }
 
-  const events = currentCatalog.events.filter(
+  const events = getVisibleCatalogEvents(currentCatalog).filter(
     (event) => event.eventType === activeEventType
   );
   const genderOrder = ["w", "m", "mixed"];
@@ -1309,8 +1646,11 @@ function setActiveEventType(eventType) {
 }
 
 function renderResultCatalog(catalog) {
+  updateResultSourceSwitcher();
+
+  const visibleEvents = getVisibleCatalogEvents(catalog);
   const eventTypes = ["Individual", "Team", "LvRating"].filter((eventType) =>
-    catalog.events.some((event) => event.eventType === eventType)
+    visibleEvents.some((event) => event.eventType === eventType)
   );
 
   resultTabs.querySelectorAll(".result-tab").forEach((tab) => {
@@ -1318,7 +1658,11 @@ function renderResultCatalog(catalog) {
   });
 
   resultSelection.hidden = false;
-  setActiveEventType(eventTypes[0]);
+  setActiveEventType(
+    eventTypes.includes(activeEventType)
+      ? activeEventType
+      : eventTypes[0] || ""
+  );
 }
 
 function getCatalogSourceText(source) {
@@ -1354,6 +1698,7 @@ async function loadResultCatalog() {
     let catalog = await fetchJson(
       buildWorkerUrl(competitionCode, { mode: "catalog" })
     );
+    catalog = await ensureJrp2026DirectLiveCatalog(catalog, competitionCode);
     catalog = ensureComputedCatalogEvents(catalog, competitionCode);
 
     if (!Array.isArray(catalog.events) || catalog.events.length === 0) {
@@ -1372,17 +1717,23 @@ async function loadResultCatalog() {
     renderResultCatalog(catalog);
     setExportControlsReady(true);
 
-    const realEventCount = catalog.events.filter(
+    const visibleEvents = getVisibleCatalogEvents(catalog);
+    const sourceText = getCatalogSourceText(
+      isJrp2026Competition(catalog.competition)
+        ? getActiveJrp2026SourceMode()
+        : catalog.source
+    );
+    const realEventCount = visibleEvents.filter(
       (event) => !event.placeholder && event.source !== "computed"
     ).length;
-    const computedEventCount = catalog.events.filter(
+    const computedEventCount = visibleEvents.filter(
       (event) => !event.placeholder && event.source === "computed"
     ).length;
     const placeholderCount =
-      catalog.events.length - realEventCount - computedEventCount;
+      visibleEvents.length - realEventCount - computedEventCount;
     statusElement.textContent =
       realEventCount > 0
-        ? `${realEventCount} Ergebnislisten ${getCatalogSourceText(catalog.source)} zugeordnet. ` +
+        ? `${realEventCount} Ergebnislisten ${sourceText} zugeordnet. ` +
           "Wähle bei der gewünschten Disziplin Geschlecht und Runde."
         : "Aktuell sind noch keine Ergebnislisten vorhanden.";
 
@@ -2029,6 +2380,7 @@ function normalizeLiveResultRows(data, event, context) {
       place: row.platz === undefined || row.platz === null
         ? index + 1
         : row.platz,
+      rankPoints: String(row.punkte || row["punkte 1"] || "").trim(),
       competitionCode: context.competitionCode,
       competitionName: context.competitionName,
       competitionDate: context.competitionDate,
@@ -2068,6 +2420,7 @@ function normalizeLiveMultiDisciplineRows(rows, disciplines, event, context) {
         place: row.platz === undefined || row.platz === null
           ? index + 1
           : row.platz,
+        rankPoints: String(row.punkte || "").trim(),
         discipline: getDisciplineLabel(event),
         time: "",
         status: totalStatus
@@ -2088,6 +2441,7 @@ function normalizeLiveMultiDisciplineRows(rows, disciplines, event, context) {
       output.push({
         ...baseResult,
         place: "",
+        rankPoints: points,
         discipline,
         time: looksLikeTime(rawTime) ? rawTime : "",
         status
@@ -2268,6 +2622,84 @@ function addJrpTeamPoints(lvBucket, event, points) {
   }
 }
 
+function getJrpAthleteKey(result) {
+  return [
+    normalizeLookupText(result.club),
+    normalizeLookupText(result.name),
+    result.gender || ""
+  ].join("\u001f");
+}
+
+function getJrpAthleteBucket(athleteBuckets, result) {
+  const key = getJrpAthleteKey(result);
+
+  if (!athleteBuckets.has(key)) {
+    athleteBuckets.set(key, {
+      lv: String(result.club || "").trim() || "Ohne Gliederung",
+      name: String(result.name || "").trim(),
+      gender: result.gender,
+      poolScores: [],
+      openWaterScores: []
+    });
+  }
+
+  return athleteBuckets.get(key);
+}
+
+function sumTopJrpScores(scores, count) {
+  return scores
+    .filter((points) => Number.isFinite(points) && points > 0)
+    .sort((left, right) => right - left)
+    .slice(0, count)
+    .reduce((sum, points) => sum + points, 0);
+}
+
+function getJrpGenderBuckets() {
+  return {
+    female: [],
+    male: []
+  };
+}
+
+function getJrpAthletePartialSixFightPoints(athlete) {
+  return (
+    sumTopJrpScores(athlete.poolScores, 3) +
+    sumTopJrpScores(athlete.openWaterScores, 3)
+  );
+}
+
+function addJrpIndividualPoints(lvBuckets, athleteBuckets) {
+  const candidatesByLv = new Map();
+
+  athleteBuckets.forEach((athlete) => {
+    if (!["w", "m"].includes(athlete.gender)) {
+      return;
+    }
+
+    const lvKey = athlete.lv;
+
+    if (!candidatesByLv.has(lvKey)) {
+      candidatesByLv.set(lvKey, getJrpGenderBuckets());
+    }
+
+    const candidates = candidatesByLv.get(lvKey);
+    const partialSixFightPoints = getJrpAthletePartialSixFightPoints(athlete);
+
+    if (partialSixFightPoints <= 0) {
+      return;
+    }
+
+    const list = athlete.gender === "w" ? candidates.female : candidates.male;
+    list.push(partialSixFightPoints);
+  });
+
+  candidatesByLv.forEach((candidates, lv) => {
+    const lvBucket = getLvBucket(lvBuckets, lv);
+    lvBucket.individualFemalePoints += sumTopJrpScores(candidates.female, 4);
+    lvBucket.individualMalePoints += sumTopJrpScores(candidates.male, 4);
+  });
+}
+
 function createKnownJrpLvRatingRows(context) {
   const knownRows = JRP_KNOWN_LV_RATINGS[normalizeCompetitionCode(
     context.competitionCode
@@ -2315,9 +2747,11 @@ function createKnownJrpLvRatingRows(context) {
 
 function calculateJrpLvRatingFromRows(rowsByEvent, context) {
   const lvBuckets = new Map();
+  const athleteBuckets = new Map();
 
   rowsByEvent.forEach(({ event, rows }) => {
     const placeOffset = getJrpFinalPlaceOffset(event, rows);
+    const disciplineType = getJrpIndividualDisciplineType(event.discipline);
 
     rows.forEach((result) => {
       const place = Number(result.place) + placeOffset;
@@ -2326,10 +2760,14 @@ function calculateJrpLvRatingFromRows(rowsByEvent, context) {
         return;
       }
 
-      const lvBucket = getLvBucket(lvBuckets, result.club);
-      const points = getJrpRankPoints(place);
+      const points = getJrpResultPoints(result, place);
+
+      if (!Number.isFinite(points) || points <= 0) {
+        return;
+      }
 
       if (event.eventType === "Team") {
+        const lvBucket = getLvBucket(lvBuckets, result.club);
         addJrpTeamPoints(lvBucket, event, points);
         lvBucket.sourceResultCount += 1;
         return;
@@ -2339,21 +2777,24 @@ function calculateJrpLvRatingFromRows(rowsByEvent, context) {
         return;
       }
 
-      const disciplineType = getJrpIndividualDisciplineType(event.discipline);
-
       if (!disciplineType) {
         return;
       }
 
-      if (result.gender === "w") {
-        lvBucket.individualFemalePoints += points;
+      const athleteBucket = getJrpAthleteBucket(athleteBuckets, result);
+
+      if (disciplineType === "pool") {
+        athleteBucket.poolScores.push(points);
       } else {
-        lvBucket.individualMalePoints += points;
+        athleteBucket.openWaterScores.push(points);
       }
 
+      const lvBucket = getLvBucket(lvBuckets, result.club);
       lvBucket.sourceResultCount += 1;
     });
   });
+
+  addJrpIndividualPoints(lvBuckets, athleteBuckets);
 
   const rows = Array.from(lvBuckets.values())
     .map((lvBucket) => {
@@ -2756,16 +3197,13 @@ function normalizeSelectionResultForExport(result, event, context) {
 }
 
 async function collectExportSheets() {
-  const events = Array.isArray(currentCatalog && currentCatalog.events)
-    ? currentCatalog.events.filter(
-        (event) => !event.placeholder && event.source !== "computed"
-      )
-    : [];
-  const computedEvents = Array.isArray(currentCatalog && currentCatalog.events)
-    ? currentCatalog.events.filter(
-        (event) => !event.placeholder && event.source === "computed"
-      )
-    : [];
+  const visibleEvents = getVisibleCatalogEvents(currentCatalog);
+  const events = visibleEvents.filter(
+    (event) => !event.placeholder && event.source !== "computed"
+  );
+  const computedEvents = visibleEvents.filter(
+    (event) => !event.placeholder && event.source === "computed"
+  );
   const competitionCode = getSelectedCompetitionCode();
   const context = {
     competitionCode,
@@ -3091,6 +3529,7 @@ function createExportFilename() {
 function createExportLogRecord(excelFile, rowCount, dataSignature) {
   const code = normalizeCompetitionCode(getSelectedCompetitionCode());
   const catalogSignature = createCatalogSignature(currentCatalog);
+  const events = getVisibleCatalogEvents(currentCatalog);
 
   return {
     exported_at: new Date().toISOString(),
@@ -3098,8 +3537,10 @@ function createExportLogRecord(excelFile, rowCount, dataSignature) {
     competition_name: currentCatalog.competitionName || code,
     from: currentCatalog.from || "",
     till: currentCatalog.till || "",
-    source: currentCatalog.source || "",
-    event_count: String((currentCatalog.events || []).length),
+    source: isJrp2026Competition(code)
+      ? getActiveJrp2026SourceMode()
+      : currentCatalog.source || "",
+    event_count: String(events.length),
     row_count: String(rowCount),
     catalog_signature: catalogSignature,
     data_signature: dataSignature,
@@ -3309,7 +3750,7 @@ async function exportCurrentCompetition() {
     return;
   }
 
-  if (currentCatalog.events.length === 0) {
+  if (getVisibleCatalogEvents(currentCatalog).length === 0) {
     statusElement.className = "status error";
     statusElement.textContent = "Für diesen Wettkampf gibt es keine exportierbaren Ergebnislisten.";
     return;
@@ -3432,6 +3873,15 @@ resultTabs.addEventListener("click", (event) => {
   if (tab && currentCatalog) {
     setActiveEventType(tab.dataset.eventType);
   }
+});
+resultSourceSwitcher.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-result-source-mode]");
+
+  if (!button || button.disabled || !currentCatalog) {
+    return;
+  }
+
+  setJrp2026SourceMode(button.dataset.resultSourceMode);
 });
 resultCatalog.addEventListener("click", (event) => {
   const button = event.target.closest(".result-choice-button");

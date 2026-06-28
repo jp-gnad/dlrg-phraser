@@ -357,6 +357,9 @@
     "JRP2023": [
       "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/19-junioren-rettungspokal/jrp-2023-ergebnisse/"
     ],
+    "JRP2026": [
+      "https://www.dlrg.de/mitmachen/rettungssport/nationale-und-internationale-wettkaempfe/junioren-rettungspokal-2025-2/"
+    ],
     "MDRM2026": [
       "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mdrm-liveergebnisse-einzelwettkaempfe/",
       "https://igdm.dlrg.de/mitteldeutsche-regionalmeisterschaften/mannschaftswettkaempfe-liveergebnisse/"
@@ -498,6 +501,14 @@
       "1600000:198",
       "1600000:199"
     ],
+    "JRP2026": [
+      "1600000:899",
+      "1600000:900",
+      "1600000:901",
+      "1600000:902",
+      "1600000:903",
+      "1600000:904"
+    ],
     "LMS_BA2025": [
       "0100000:686"
     ],
@@ -613,6 +624,12 @@
     "1600000:540": "Individual",
     "1600000:541": "Team",
     "1600000:542": "Team",
+    "1600000:899": "Individual",
+    "1600000:900": "Team",
+    "1600000:901": "Team",
+    "1600000:902": "Individual",
+    "1600000:903": "Team",
+    "1600000:904": "Team",
     "1600000:356": "Individual",
     "1600000:357": "Team",
     "1600000:358": "Team",

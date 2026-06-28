@@ -8,8 +8,8 @@
     content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://dlrg-results.jp-gnad.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'"
   >
   <title>DLRG Phraser</title>
-  <link rel="stylesheet" href="phraser.css?v=20260626-1">
-  <script defer src="phraser.js?v=20260626-5"></script>
+  <link rel="stylesheet" href="phraser.css?v=20260627-1">
+  <script defer src="phraser.js?v=20260628-2"></script>
 </head>
 <body class="auth-locked">
   <section id="loginScreen" class="login-screen" aria-labelledby="loginTitle">
@@ -176,6 +176,22 @@
           >
             LV-Wertung
           </button>
+        </div>
+
+        <div
+          id="resultSourceSwitcher"
+          class="result-source-switcher"
+          aria-label="Ergebnisquelle wählen"
+          hidden
+        >
+          <span>Inhalt anzeigen aus:</span>
+          <button type="button" data-result-source-mode="live">
+            DLRG.net
+          </button>
+          <button type="button" data-result-source-mode="competition">
+            Competition.net
+          </button>
+          <small>Gilt für Einzel, Mannschaft und LV-Wertung.</small>
         </div>
 
         <div id="resultCatalog" class="result-catalog"></div>
